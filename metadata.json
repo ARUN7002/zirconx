@@ -1,0 +1,8 @@
+{
+  "name": "Chronicle Vault - Local Reminders & PDF Vault",
+  "description": "Local-first offline daily reminders with voice scheduling, exact notifications, system health diagnostics, 20-day voice retention, and a permanent 50MB PDF document vault.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
