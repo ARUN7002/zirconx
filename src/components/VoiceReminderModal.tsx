@@ -48,13 +48,12 @@ export const VoiceReminderModal: React.FC<VoiceReminderModalProps> = ({
   onSaveVoiceReminder,
   defaultLanguage = 'en-US',
 }) => {
-  if (!isOpen) return null;
-
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isSpeechEngineSupported, setIsSpeechEngineSupported] = useState(true);
 
   // Audio stream & recorder refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -78,11 +77,13 @@ export const VoiceReminderModal: React.FC<VoiceReminderModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    startVoiceSession();
+    if (isOpen) {
+      startVoiceSession();
+    }
     return () => {
       cleanupVoiceSession();
     };
-  }, []);
+  }, [isOpen]);
 
   useEffect(() => {
     if (isRecording) {
@@ -97,6 +98,8 @@ export const VoiceReminderModal: React.FC<VoiceReminderModalProps> = ({
     };
   }, [isRecording]);
 
+  if (!isOpen) return null;
+
   const startVoiceSession = async () => {
     setErrorMsg(null);
     setLiveTranscript('');
@@ -104,6 +107,10 @@ export const VoiceReminderModal: React.FC<VoiceReminderModalProps> = ({
     audioChunksRef.current = [];
 
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('navigator.mediaDevices.getUserMedia is unsupported in this environment');
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg',
@@ -128,9 +135,16 @@ export const VoiceReminderModal: React.FC<VoiceReminderModalProps> = ({
 
       mediaRecorder.start(200);
       setIsRecording(true);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Microphone error:', err);
-      setErrorMsg('Microphone access is unavailable. Please verify device permissions in System Health.');
+      const errorObj = err as { name?: string; message?: string };
+      if (errorObj?.name === 'NotAllowedError' || errorObj?.name === 'PermissionDeniedError') {
+        setErrorMsg('Microphone access was denied. Please allow microphone permissions in your browser or device settings.');
+      } else if (errorObj?.name === 'NotFoundError' || errorObj?.name === 'DevicesNotFoundError') {
+        setErrorMsg('No microphone input hardware was detected on your system.');
+      } else {
+        setErrorMsg(`Microphone error: ${errorObj?.message || 'Access unavailable'}. Please verify device permissions in System Health.`);
+      }
       return;
     }
 
@@ -139,6 +153,7 @@ export const VoiceReminderModal: React.FC<VoiceReminderModalProps> = ({
       (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionInstance }).webkitSpeechRecognition;
 
     if (SpeechRecognitionClass) {
+      setIsSpeechEngineSupported(true);
       try {
         const recognition = new SpeechRecognitionClass();
         recognition.continuous = true;
@@ -155,6 +170,9 @@ export const VoiceReminderModal: React.FC<VoiceReminderModalProps> = ({
 
         recognition.onerror = (e) => {
           console.warn('Speech recognition warning:', e.error);
+          if (e.error === 'not-allowed') {
+            setErrorMsg('Speech recognition service permission denied by browser.');
+          }
         };
 
         recognition.start();
@@ -162,6 +180,8 @@ export const VoiceReminderModal: React.FC<VoiceReminderModalProps> = ({
       } catch (e) {
         console.warn('Could not launch speech recognition:', e);
       }
+    } else {
+      setIsSpeechEngineSupported(false);
     }
   };
 
@@ -367,6 +387,13 @@ export const VoiceReminderModal: React.FC<VoiceReminderModalProps> = ({
                   />
                 ))}
               </div>
+
+              {/* Fallback Notice if Speech Recognition is unavailable */}
+              {!isSpeechEngineSupported && (
+                <div className="w-full p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-700 dark:text-amber-400 text-xs text-left">
+                  ⚠️ Speech-to-text is not supported in this browser engine. Audio is being captured locally, and you can name the reminder on the next screen.
+                </div>
+              )}
 
               {/* Streaming Transcript */}
               <div className="w-full min-h-[72px] p-4 bg-white/50 dark:bg-zinc-950/70 border border-black/5 dark:border-white/10 rounded-2xl text-slate-700 dark:text-zinc-300 text-sm italic text-left">

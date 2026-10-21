@@ -18,7 +18,7 @@ import {
   Laptop,
 } from 'lucide-react';
 import { SystemConfig } from '../types';
-import { playChime } from '../services/audioChime';
+import { playChime, speakVoiceAnnouncement, isSpeechSynthesisSupported } from '../services/audioChime';
 import { runAutoCleanupSweep, getAllReminders, getAllVoiceNotes, getAllVaultItems, getAllChatMessages } from '../services/db';
 
 interface SettingsModalProps {
@@ -38,15 +38,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onRefreshData,
   onThemeChange,
 }) => {
-  if (!isOpen) return null;
-
   const [retentionDays, setRetentionDays] = useState(config.retentionDays || 20);
   const [voiceLanguage, setVoiceLanguage] = useState(config.voiceLanguage || 'en-US');
   const [chimeType, setChimeType] = useState(config.notificationChime || 'bell');
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(config.theme || 'dark');
+  const [voiceAnnouncementEnabled, setVoiceAnnouncementEnabled] = useState(
+    config.voiceAnnouncementEnabled || false
+  );
   const [cleanupStatus, setCleanupStatus] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setRetentionDays(config.retentionDays || 20);
+      setVoiceLanguage(config.voiceLanguage || 'en-US');
+      setChimeType(config.notificationChime || 'bell');
+      setTheme(config.theme || 'dark');
+      setVoiceAnnouncementEnabled(config.voiceAnnouncementEnabled || false);
+      setCleanupStatus(null);
+      setSaveSuccess(false);
+    }
+  }, [isOpen, config]);
+
+  if (!isOpen) return null;
 
   const handleSelectTheme = (newTheme: 'dark' | 'light' | 'system') => {
     setTheme(newTheme);
@@ -61,6 +76,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       voiceLanguage,
       notificationChime: chimeType,
       theme,
+      voiceAnnouncementEnabled,
     });
     setSaveSuccess(true);
     setTimeout(() => {
@@ -72,6 +88,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleTestSound = (type: 'bell' | 'alert' | 'gentle') => {
     setChimeType(type);
     playChime(type);
+  };
+
+  const handleTestVoiceAnnouncement = () => {
+    speakVoiceAnnouncement(
+      'Zircon voice announcement test: This is how your scheduled reminders will sound.',
+      voiceLanguage
+    );
   };
 
   const handleRunCleanupNow = async () => {
@@ -282,6 +305,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span>{sound}</span>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* 3b. Spoken Voice Announcements (Text-to-Speech) */}
+          <div className="p-4 bg-white/40 dark:bg-zinc-950/60 border border-black/5 dark:border-white/10 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-[#00F5A0]" />
+                <div>
+                  <div className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                    Spoken Voice Announcements (TTS)
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-zinc-400">
+                    Speaks reminder title out loud when alarms trigger
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setVoiceAnnouncementEnabled(!voiceAnnouncementEnabled)}
+                className={`w-11 h-6 rounded-full p-1 transition-colors ${
+                  voiceAnnouncementEnabled ? 'bg-[#00F5A0]' : 'bg-slate-300 dark:bg-zinc-800'
+                }`}
+              >
+                <div
+                  className={`w-4 h-4 rounded-full bg-white dark:bg-zinc-950 transition-transform ${
+                    voiceAnnouncementEnabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between pt-1 border-t border-black/5 dark:border-white/10">
+              <span className="text-[11px] text-slate-500 dark:text-zinc-400">
+                {isSpeechSynthesisSupported()
+                  ? 'Speech synthesis engine is ready'
+                  : 'Speech synthesis not supported on this device'}
+              </span>
+              <button
+                type="button"
+                onClick={handleTestVoiceAnnouncement}
+                disabled={!isSpeechSynthesisSupported()}
+                className="px-2.5 py-1 rounded-xl bg-slate-200 dark:bg-zinc-800 hover:bg-[#00F5A0] hover:text-zinc-950 disabled:opacity-40 text-xs font-semibold text-slate-700 dark:text-zinc-300 transition"
+              >
+                Test Voice
+              </button>
             </div>
           </div>
 

@@ -59,8 +59,6 @@ export const ChatbotModal: React.FC<ChatbotModalProps> = ({
   onOpenVault,
   onOpenHealth,
 }) => {
-  if (!isOpen) return null;
-
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -85,13 +83,19 @@ export const ChatbotModal: React.FC<ChatbotModalProps> = ({
 
   // Check WebGPU hardware and load chat history
   useEffect(() => {
-    loadChatHistory();
-    setWebGpuAvailable(webLLMService.checkWebGPUSupport());
-  }, []);
+    if (isOpen) {
+      loadChatHistory();
+      setWebGpuAvailable(webLLMService.checkWebGPUSupport());
+    }
+  }, [isOpen]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, isTyping, streamingText]);
+    if (isOpen) {
+      scrollToBottom();
+    }
+  }, [isOpen, messages, isTyping, streamingText]);
+
+  if (!isOpen) return null;
 
   const loadChatHistory = async () => {
     const history = await getAllChatMessages();

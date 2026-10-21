@@ -22,6 +22,7 @@ import {
 import { SubsystemHealth } from '../types';
 import { notificationManager } from '../services/notificationManager';
 import { ensureStoragePersistence, reconcileMissedReminders } from '../services/db';
+import { isSpeechSynthesisSupported, speakVoiceAnnouncement } from '../services/audioChime';
 
 interface SystemHealthModalProps {
   isOpen: boolean;
@@ -29,16 +30,18 @@ interface SystemHealthModalProps {
 }
 
 export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({ isOpen, onClose }) => {
-  if (!isOpen) return null;
-
   const [subsystems, setSubsystems] = useState<SubsystemHealth[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [overallHealth, setOverallHealth] = useState<'healthy' | 'warning' | 'error'>('healthy');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    runFullDiagnostics();
-  }, []);
+    if (isOpen) {
+      runFullDiagnostics();
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
 
   const runFullDiagnostics = async () => {
     setIsScanning(true);
@@ -53,7 +56,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({ isOpen, on
         name: 'Local Notifications',
         status: 'healthy',
         message: 'Notification permission is fully granted.',
-        details: 'Exact alarms can present visual toasts.',
+        details: 'Exact alarms present visual toasts while browser is open or in background. Closed apps require external push servers (missed alarms auto-reconcile on boot).',
       });
     } else if (notifStatus === 'default') {
       results.push({
@@ -132,6 +135,25 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({ isOpen, on
         status: 'warning',
         message: 'Speech recognition engine is not supported in this browser.',
         details: 'Audio notes will still record and save with manual titles.',
+      });
+    }
+
+    // 3b. Voice Announcement (TTS) Engine
+    if (isSpeechSynthesisSupported()) {
+      results.push({
+        name: 'Voice Announcement (TTS)',
+        status: 'healthy',
+        message: 'SpeechSynthesis API initialized and supported.',
+        details: 'Speaks reminder titles audibly when alarms fire.',
+        actionLabel: 'Test Voice TTS',
+        actionId: 'test_tts',
+      });
+    } else {
+      results.push({
+        name: 'Voice Announcement (TTS)',
+        status: 'warning',
+        message: 'SpeechSynthesis API is not supported in this browser.',
+        details: 'Alarms will use synthesized Web Audio chimes.',
       });
     }
 
@@ -230,6 +252,13 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({ isOpen, on
           : 'Browser denied explicit persistence, but IndexedDB remains locally saved.'
       );
       runFullDiagnostics();
+    } else if (actionId === 'test_tts') {
+      const success = speakVoiceAnnouncement('Zircon voice announcements are operating correctly.');
+      setActionNotice(
+        success
+          ? 'Voice announcement spoken via SpeechSynthesis API!'
+          : 'Failed to dispatch voice announcement (speechSynthesis unavailable).'
+      );
     }
   };
 
@@ -243,6 +272,7 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({ isOpen, on
     'Local Notifications': <Bell className="w-4 h-4 text-[#00F5A0]" />,
     'Microphone Hardware': <Mic className="w-4 h-4 text-[#00F5A0]" />,
     'Speech-to-Text Engine': <Sparkles className="w-4 h-4 text-[#00F5A0]" />,
+    'Voice Announcement (TTS)': <Volume2 className="w-4 h-4 text-[#00F5A0]" />,
     'Local Storage & OPFS': <HardDrive className="w-4 h-4 text-[#00F5A0]" />,
     'Alarm & Chime Service': <Volume2 className="w-4 h-4 text-[#00F5A0]" />,
     'Database & Reconciler': <Database className="w-4 h-4 text-[#00F5A0]" />,

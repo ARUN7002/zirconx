@@ -349,12 +349,25 @@ export async function runAutoCleanupSweep(): Promise<{ purgedCount: number }> {
   });
 }
 
-// SHA-256 Hash generator for duplicate file detection
+// SHA-256 Hash generator for duplicate file detection with graceful fallback
 export async function computeFileHash(file: File | Blob): Promise<string> {
   const buffer = await file.arrayBuffer();
-  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  if (typeof crypto !== 'undefined' && crypto.subtle?.digest) {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  // Fallback hash for environments without WebCrypto subtle
+  const view = new Uint8Array(buffer);
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c64e6d;
+  for (let i = 0; i < view.length; i++) {
+    h1 = Math.imul(h1 ^ view[i], 2654435761);
+    h2 = Math.imul(h2 ^ view[i], 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0') + '_' + file.size;
 }
 
 // Storage persistence request

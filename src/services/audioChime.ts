@@ -90,3 +90,26 @@ export function playChime(chimeType: 'bell' | 'alert' | 'gentle' = 'bell'): void
     console.warn('Audio chime playback error:', err);
   }
 }
+
+export function isSpeechSynthesisSupported(): boolean {
+  return typeof window !== 'undefined' && 'speechSynthesis' in window;
+}
+
+export function speakVoiceAnnouncement(text: string, lang = 'en-US'): boolean {
+  if (!isSpeechSynthesisSupported()) {
+    return false;
+  }
+  try {
+    window.speechSynthesis.cancel(); // Cancel any lingering utterances
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = lang;
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+    window.speechSynthesis.speak(utterance);
+    return true;
+  } catch (err) {
+    console.warn('Voice announcement error:', err);
+    return false;
+  }
+}

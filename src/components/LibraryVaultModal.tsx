@@ -35,8 +35,6 @@ export const LibraryVaultModal: React.FC<LibraryVaultModalProps> = ({
   onUploadItem,
   onDeleteItem,
 }) => {
-  if (!isOpen) return null;
-
   const MAX_FILE_BYTES = 50 * 1024 * 1024; // 52,428,800 bytes (50 MB)
 
   const [isDragging, setIsDragging] = useState(false);
@@ -47,6 +45,8 @@ export const LibraryVaultModal: React.FC<LibraryVaultModalProps> = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  if (!isOpen) return null;
 
   const totalBytes = vaultItems.reduce((acc, item) => acc + item.fileSizeBytes, 0);
   const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);

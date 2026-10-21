@@ -28,6 +28,7 @@ import {
   Moon,
   Bot,
   MessageSquare,
+  Pencil,
 } from 'lucide-react';
 import { Reminder, VoiceNote, VaultItem, SystemConfig, ReminderStatus } from './types';
 import {
@@ -82,6 +83,7 @@ export default function App() {
 
   // Navigation & Modals
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
@@ -163,10 +165,14 @@ export default function App() {
   useEffect(() => {
     reminders.forEach((r) => {
       if (r.status === 'active' && r.dueTimestamp > Date.now()) {
-        notificationManager.scheduleReminder(r, config.notificationChime);
+        notificationManager.scheduleReminder(
+          r,
+          config.notificationChime,
+          config.voiceAnnouncementEnabled
+        );
       }
     });
-  }, [reminders, config.notificationChime]);
+  }, [reminders, config.notificationChime, config.voiceAnnouncementEnabled]);
 
   // Subscribe to in-app reminder trigger notifications
   useEffect(() => {
@@ -199,9 +205,23 @@ export default function App() {
   }, []);
 
   // Reminder Actions
+  const handleOpenEditReminder = (reminder: Reminder) => {
+    setEditingReminder(reminder);
+    setIsManualModalOpen(true);
+  };
+
   const handleSaveReminder = async (newReminder: Reminder) => {
+    // Clear old timer if editing
+    notificationManager.cancelReminder(newReminder.id);
     await saveReminder(newReminder);
-    notificationManager.scheduleReminder(newReminder, config.notificationChime);
+    if (newReminder.status === 'active' && newReminder.dueTimestamp > Date.now()) {
+      notificationManager.scheduleReminder(
+        newReminder,
+        config.notificationChime,
+        config.voiceAnnouncementEnabled
+      );
+    }
+    setEditingReminder(null);
     await refreshAllData();
   };
 
@@ -525,7 +545,10 @@ export default function App() {
 
           {/* Action 2: Manual Reminder Entry */}
           <button
-            onClick={() => setIsManualModalOpen(true)}
+            onClick={() => {
+              setEditingReminder(null);
+              setIsManualModalOpen(true);
+            }}
             className="glass-card p-3.5 sm:p-4 rounded-3xl text-left transition flex flex-col justify-between group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-2xl bg-white/70 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-slate-800 dark:text-zinc-200 flex items-center justify-center font-black group-hover:scale-105 transition-transform mb-2">
@@ -732,8 +755,18 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* Reminder Actions (Snooze 15m & Delete) */}
+                      {/* Reminder Actions (Edit, Snooze 15m & Delete) */}
                       <div className="flex items-center gap-1 shrink-0">
+                        {/* Edit Reminder */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditReminder(reminder)}
+                          className="p-2 rounded-xl text-slate-400 hover:text-[#00F5A0] hover:bg-slate-100 dark:hover:bg-zinc-800 transition"
+                          title="Edit reminder date & time"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+
                         {!isCompleted && (
                           <button
                             type="button"
@@ -899,43 +932,57 @@ export default function App() {
       )}
 
       {/* Modals */}
-      <ManualReminderModal
-        isOpen={isManualModalOpen}
-        onClose={() => setIsManualModalOpen(false)}
-        onSave={handleSaveReminder}
-      />
+      {isManualModalOpen && (
+        <ManualReminderModal
+          isOpen={isManualModalOpen}
+          onClose={() => {
+            setIsManualModalOpen(false);
+            setEditingReminder(null);
+          }}
+          onSave={handleSaveReminder}
+          reminderToEdit={editingReminder}
+        />
+      )}
 
-      <VoiceReminderModal
-        isOpen={isVoiceModalOpen}
-        onClose={() => setIsVoiceModalOpen(false)}
-        onSaveVoiceReminder={handleSaveVoiceReminder}
-        defaultLanguage={config.voiceLanguage}
-      />
+      {isVoiceModalOpen && (
+        <VoiceReminderModal
+          isOpen={isVoiceModalOpen}
+          onClose={() => setIsVoiceModalOpen(false)}
+          onSaveVoiceReminder={handleSaveVoiceReminder}
+          defaultLanguage={config.voiceLanguage}
+        />
+      )}
 
-      <LibraryVaultModal
-        isOpen={isVaultModalOpen}
-        onClose={() => setIsVaultModalOpen(false)}
-        vaultItems={vaultItems}
-        onUploadItem={handleUploadVaultItem}
-        onDeleteItem={handleDeleteVaultItem}
-      />
+      {isVaultModalOpen && (
+        <LibraryVaultModal
+          isOpen={isVaultModalOpen}
+          onClose={() => setIsVaultModalOpen(false)}
+          vaultItems={vaultItems}
+          onUploadItem={handleUploadVaultItem}
+          onDeleteItem={handleDeleteVaultItem}
+        />
+      )}
 
-      <SystemHealthModal
-        isOpen={isHealthModalOpen}
-        onClose={() => setIsHealthModalOpen(false)}
-      />
+      {isHealthModalOpen && (
+        <SystemHealthModal
+          isOpen={isHealthModalOpen}
+          onClose={() => setIsHealthModalOpen(false)}
+        />
+      )}
 
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        onClose={() => setIsSettingsModalOpen(false)}
-        config={config}
-        onSaveConfig={async (upd) => {
-          const newCfg = await saveSystemConfig(upd);
-          setConfig(newCfg);
-        }}
-        onThemeChange={handleSetSpecificTheme}
-        onRefreshData={refreshAllData}
-      />
+      {isSettingsModalOpen && (
+        <SettingsModal
+          isOpen={isSettingsModalOpen}
+          onClose={() => setIsSettingsModalOpen(false)}
+          config={config}
+          onSaveConfig={async (upd) => {
+            const newCfg = await saveSystemConfig(upd);
+            setConfig(newCfg);
+          }}
+          onThemeChange={handleSetSpecificTheme}
+          onRefreshData={refreshAllData}
+        />
+      )}
 
       {/* Floating Zircon AI Assistant Trigger Button */}
       <button
@@ -953,23 +1000,25 @@ export default function App() {
       </button>
 
       {/* Zircon AI Chatbot Modal */}
-      <ChatbotModal
-        isOpen={isChatbotOpen}
-        onClose={() => setIsChatbotOpen(false)}
-        reminders={reminders}
-        voiceNotes={voiceNotes}
-        vaultItems={vaultItems}
-        retentionDays={config.retentionDays}
-        onScheduleReminder={handleSaveReminder}
-        onOpenVault={() => {
-          setIsChatbotOpen(false);
-          setIsVaultModalOpen(true);
-        }}
-        onOpenHealth={() => {
-          setIsChatbotOpen(false);
-          setIsHealthModalOpen(true);
-        }}
-      />
+      {isChatbotOpen && (
+        <ChatbotModal
+          isOpen={isChatbotOpen}
+          onClose={() => setIsChatbotOpen(false)}
+          reminders={reminders}
+          voiceNotes={voiceNotes}
+          vaultItems={vaultItems}
+          retentionDays={config.retentionDays}
+          onScheduleReminder={handleSaveReminder}
+          onOpenVault={() => {
+            setIsChatbotOpen(false);
+            setIsVaultModalOpen(true);
+          }}
+          onOpenHealth={() => {
+            setIsChatbotOpen(false);
+            setIsHealthModalOpen(true);
+          }}
+        />
+      )}
     </div>
   );
 }

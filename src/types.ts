@@ -53,6 +53,7 @@ export interface SystemConfig {
   autoCleanupIntervalHours: number; // default: 12
   lastCleanupTimestamp: number;
   theme: 'dark' | 'light' | 'system';
+  voiceAnnouncementEnabled?: boolean; // Text-to-speech spoken reminder announcement
 }
 
 export interface SubsystemHealth {
