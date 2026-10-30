@@ -68,6 +68,8 @@ import { LibraryVaultModal } from './components/LibraryVaultModal';
 import { SystemHealthModal } from './components/SystemHealthModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ChatbotModal } from './components/ChatbotModal';
+import { WelcomeTransitionScreen } from './components/WelcomeTransitionScreen';
+import { WeeklyAnalysisCard } from './components/WeeklyAnalysisCard';
 
 export default function App() {
   // Splash & Initialization State
@@ -101,6 +103,12 @@ export default function App() {
     }
     return true;
   });
+
+  // 4-Second Welcome Transition on Login / Name Change
+  const [welcomeUser, setWelcomeUser] = useState<string | null>(null);
+
+  // Selected Day Timestamp Filter from Weekly Analysis (null = show normal agenda)
+  const [selectedWeeklyDayTimestamp, setSelectedWeeklyDayTimestamp] = useState<number | null>(null);
 
   // Navigation & Modals
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -191,6 +199,7 @@ export default function App() {
     notificationManager.cancelAll();
     setActiveUser(userName);
     setCurrentUser(userName);
+    setWelcomeUser(userName); // Trigger 4-second Welcome "[Name]" Screen
 
     // Apply user theme if stored
     const userTheme = (localStorage.getItem(`zircon_theme_${userName}`) || 'dark') as 'dark' | 'light';
@@ -214,6 +223,8 @@ export default function App() {
     // 2. Clear state in memory
     setActiveUser(null);
     setCurrentUser(null);
+    setWelcomeUser(null);
+    setSelectedWeeklyDayTimestamp(null);
     setReminders([]);
     setVoiceNotes([]);
     setVaultItems([]);
@@ -237,6 +248,8 @@ export default function App() {
     // 3. Reset all React state to uninitialized virgin phase
     setActiveUser(null);
     setCurrentUser(null);
+    setWelcomeUser(null);
+    setSelectedWeeklyDayTimestamp(null);
     setReminders([]);
     setVoiceNotes([]);
     setVaultItems([]);
@@ -419,6 +432,17 @@ export default function App() {
 
   // Filtered Reminders
   const filteredReminders = reminders.filter((r) => {
+    // If a specific day from Weekly Analysis is selected:
+    if (selectedWeeklyDayTimestamp !== null) {
+      const dayStart = new Date(selectedWeeklyDayTimestamp);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEndTs = new Date(selectedWeeklyDayTimestamp);
+      dayEndTs.setHours(23, 59, 59, 999);
+      if (r.dueTimestamp < dayStart.getTime() || r.dueTimestamp > dayEndTs.getTime()) {
+        return false;
+      }
+    }
+
     if (reminderFilter === 'today') {
       return r.dueTimestamp >= now && r.dueTimestamp <= dayEnd.getTime();
     }
@@ -435,10 +459,10 @@ export default function App() {
   });
 
   const priorityStyles = {
-    low: 'bg-zinc-800/40 text-zinc-400 border-zinc-700/50',
-    normal: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
-    high: 'bg-amber-500/10 text-amber-500 border-amber-500/30',
-    urgent: 'bg-rose-500/10 text-rose-500 border-rose-500/30',
+    low: 'bg-[#2563EB]/15 text-[#93C5FD] border-[#2563EB]/30',
+    normal: 'bg-[#2563EB]/25 text-[#60A5FA] border-[#2563EB]/50',
+    high: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+    urgent: 'bg-rose-500/20 text-rose-400 border-rose-500/40 shadow-sm',
   };
 
   const getRelativeCountdown = (timestamp: number, status: ReminderStatus): string => {
@@ -467,13 +491,23 @@ export default function App() {
     return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
+  // 4-Second Welcome Transition Screen whenever a user logs in or resets and logs in as another name
+  if (welcomeUser) {
+    return (
+      <WelcomeTransitionScreen
+        userName={welcomeUser}
+        onComplete={() => setWelcomeUser(null)}
+      />
+    );
+  }
+
   const isLight = activeTheme === 'light';
 
   return (
     <div
       className={`min-h-screen ${
-        isLight ? 'bg-[#F8FAFC] text-[#0F172A]' : 'bg-[#080A0C] text-[#E2E8F0]'
-      } flex flex-col font-sans selection:bg-[#00F5A0] selection:text-zinc-950 pb-24 sm:pb-12 transition-colors duration-200`}
+        isLight ? 'bg-[#F8FAFC] text-[#0F172A]' : 'bg-[#03060B] text-[#F1F5F9]'
+      } flex flex-col font-sans selection:bg-[#CCFF00] selection:text-[#03060B] pb-24 sm:pb-12 transition-colors duration-200`}
     >
       {/* Hidden audio element for voice playback */}
       <audio
@@ -485,30 +519,30 @@ export default function App() {
       {/* Top Application Bar */}
       <header
         className={`sticky top-0 z-40 backdrop-blur-xl border-b ${
-          isLight ? 'bg-white/80 border-black/5' : 'bg-[#080A0C]/85 border-white/5'
+          isLight ? 'bg-white/80 border-black/5' : 'bg-[#03060B]/90 border-[#2563EB]/25'
         } px-4 sm:px-8 py-3.5 flex items-center justify-between transition-colors`}
       >
         <div className="flex items-center gap-3">
-          {/* Zircon Brand Gem Badge */}
-          <div className="w-10 h-10 rounded-2xl glow-action flex items-center justify-center shadow-lg group">
-            <Gem className="w-5 h-5 text-[#00F5A0] group-hover:scale-110 transition-transform" />
+          {/* Zircon Brand Gem Badge (Electric Cobalt + Acid Lime) */}
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#1D4ED8] to-[#2563EB] border border-[#2563EB]/50 flex items-center justify-center shadow-lg shadow-[#2563EB]/30 group">
+            <Gem className="w-5 h-5 text-[#CCFF00] group-hover:scale-110 transition-transform drop-shadow-[0_0_8px_rgba(204,255,0,0.6)]" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span
                 className={`font-black text-lg tracking-tight ${
                   isLight
-                    ? 'bg-gradient-to-r from-slate-900 via-slate-800 to-[#00B377]'
-                    : 'bg-gradient-to-r from-white via-zinc-200 to-[#00F5A0]'
+                    ? 'bg-gradient-to-r from-slate-900 via-slate-800 to-[#1D4ED8]'
+                    : 'bg-gradient-to-r from-white via-[#93C5FD] to-[#CCFF00]'
                 } bg-clip-text text-transparent`}
               >
                 Zircon
               </span>
-              <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest bg-[#00F5A0]/15 text-emerald-800 dark:text-[#00F5A0] border border-[#00F5A0]/30 rounded-md">
+              <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest bg-[#2563EB]/20 text-[#CCFF00] border border-[#2563EB]/40 rounded-md">
                 Local-First
               </span>
             </div>
-            <div className="text-[11px] text-slate-500 dark:text-zinc-400 font-medium">
+            <div className="text-[11px] text-[#93C5FD] dark:text-[#93C5FD]/80 font-medium">
               Autonomous Reminders & Document Vault
             </div>
           </div>
@@ -519,10 +553,10 @@ export default function App() {
           {/* AI Chatbot Assistant Trigger */}
           <button
             onClick={() => setIsChatbotOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition glow-action text-slate-900 dark:text-zinc-100 cursor-pointer shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#2563EB]/40 bg-[#070D18]/90 text-xs font-bold transition text-white hover:border-[#CCFF00]/50 cursor-pointer shadow-sm shadow-[#2563EB]/20"
             title="Ask Zircon Local AI Assistant"
           >
-            <Bot className="w-3.5 h-3.5 text-[#00F5A0]" />
+            <Bot className="w-3.5 h-3.5 text-[#CCFF00]" />
             <span className="hidden sm:inline">AI Chat</span>
           </button>
 
@@ -532,7 +566,7 @@ export default function App() {
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer ${
               isLight
                 ? 'bg-white border-black/10 text-slate-700 hover:border-black/20 shadow-sm'
-                : 'bg-zinc-900/90 border-white/10 text-zinc-300 hover:border-white/20'
+                : 'bg-[#070D18]/90 border-[#2563EB]/40 text-slate-300 hover:text-white hover:border-[#2563EB]/70'
             }`}
             title={`Switch to ${isLight ? 'Dark' : 'Light'} theme`}
           >
@@ -543,7 +577,7 @@ export default function App() {
               </>
             ) : (
               <>
-                <Sun className="w-4 h-4 text-[#00F5A0]" />
+                <Sun className="w-4 h-4 text-[#CCFF00]" />
                 <span className="hidden sm:inline font-medium">Light Mode</span>
               </>
             )}
@@ -555,16 +589,16 @@ export default function App() {
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer ${
               isLight
                 ? 'bg-white border-black/10 text-slate-700 hover:border-black/20 shadow-sm'
-                : 'bg-zinc-900/90 border-white/10 text-zinc-300 hover:border-white/20'
+                : 'bg-[#070D18]/90 border-[#2563EB]/40 text-slate-200 hover:border-[#CCFF00]/50'
             }`}
             title={`System Health Diagnostics (${healthAccessEnabled ? 'Access ON' : 'Access OFF'})`}
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                healthAccessEnabled ? 'bg-[#00F5A0] pulse-dot' : 'bg-zinc-500'
+                healthAccessEnabled ? 'bg-[#CCFF00] pulse-dot' : 'bg-zinc-500'
               }`}
             />
-            <Activity className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
+            <Activity className="w-3.5 h-3.5 text-[#3B82F6]" />
             <span className="hidden sm:inline">Health{healthAccessEnabled ? '' : ' (Off)'}</span>
           </button>
 
@@ -574,7 +608,7 @@ export default function App() {
             className={`p-2 rounded-xl border transition cursor-pointer ${
               isLight
                 ? 'bg-white border-black/10 text-slate-600 hover:text-slate-900 hover:border-black/20 shadow-sm'
-                : 'bg-zinc-900/90 border-white/10 text-zinc-400 hover:text-zinc-200 hover:border-white/20'
+                : 'bg-[#070D18]/90 border-[#2563EB]/40 text-slate-300 hover:text-white hover:border-[#2563EB]/70'
             }`}
             title="System Settings"
           >
@@ -582,18 +616,18 @@ export default function App() {
           </button>
 
           {/* Vault Security Status & Lock Trigger (Anonymous - Never shows user name) */}
-          <div className="flex items-center gap-1.5 pl-1.5 sm:pl-2.5 border-l border-black/10 dark:border-white/10">
+          <div className="flex items-center gap-1.5 pl-1.5 sm:pl-2.5 border-l border-[#2563EB]/25">
             <button
               onClick={handleLogout}
               className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
                 isLight
                   ? 'bg-white border-black/10 text-slate-700 hover:text-rose-600 hover:border-rose-300 shadow-sm'
-                  : 'bg-zinc-900/90 border-white/10 text-zinc-300 hover:text-rose-400 hover:border-rose-500/40'
+                  : 'bg-[#070D18]/90 border-[#2563EB]/40 text-slate-300 hover:text-rose-400 hover:border-rose-500/50'
               }`}
               title="Lock Vault & Close Session"
             >
-              <span className="w-2 h-2 rounded-full bg-[#00F5A0] pulse-dot shrink-0" />
-              <Lock className="w-3.5 h-3.5 text-[#00F5A0] shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-[#CCFF00] pulse-dot shrink-0" />
+              <Lock className="w-3.5 h-3.5 text-[#CCFF00] shrink-0" />
               <span className="hidden sm:inline">Lock Vault</span>
             </button>
           </div>
@@ -602,32 +636,32 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* Metric HUD Cards */}
+        {/* Metric HUD Cards (Midnight Black + Cobalt + Acid Lime) */}
         <section className="grid grid-cols-3 gap-2.5 sm:gap-4">
           {/* 1. Today's Reminders */}
-          <div className="glass-card p-4 rounded-3xl space-y-1">
-            <div className="flex items-center justify-between text-slate-500 dark:text-zinc-400">
-              <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider">Today</span>
-              <Bell className="w-4 h-4 text-[#00F5A0]" />
+          <div className="bg-[#070D18]/90 border-2 border-[#2563EB]/30 hover:border-[#CCFF00]/50 p-4 rounded-3xl space-y-1 transition-all shadow-md shadow-[#2563EB]/10">
+            <div className="flex items-center justify-between text-[#93C5FD] text-[11px] sm:text-xs font-semibold uppercase tracking-wider">
+              <span>Today</span>
+              <Bell className="w-4 h-4 text-[#CCFF00]" />
             </div>
-            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-zinc-100 font-mono">
+            <div className="text-xl sm:text-2xl font-black text-[#CCFF00] font-mono">
               {remindersTodayCount}
             </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-500 dark:text-zinc-400 truncate">
+            <div className="text-[10px] sm:text-[11px] text-slate-400 truncate">
               Due within 24h
             </div>
           </div>
 
           {/* 2. Voice Retention Window */}
-          <div className="glass-card p-4 rounded-3xl space-y-1">
-            <div className="flex items-center justify-between text-slate-500 dark:text-zinc-400">
-              <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider">Voice Log</span>
-              <Mic className="w-4 h-4 text-amber-500" />
+          <div className="bg-[#070D18]/90 border-2 border-[#2563EB]/30 hover:border-[#2563EB]/60 p-4 rounded-3xl space-y-1 transition-all shadow-md shadow-[#2563EB]/10">
+            <div className="flex items-center justify-between text-[#93C5FD] text-[11px] sm:text-xs font-semibold uppercase tracking-wider">
+              <span>Voice Log</span>
+              <Mic className="w-4 h-4 text-[#3B82F6]" />
             </div>
-            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-zinc-100 font-mono">
+            <div className="text-xl sm:text-2xl font-black text-white font-mono">
               {oldestUnsavedDaysLeft}d
             </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-500 dark:text-zinc-400 truncate">
+            <div className="text-[10px] sm:text-[11px] text-slate-400 truncate">
               {unexpiredVoices.length} active notes
             </div>
           </div>
@@ -635,16 +669,16 @@ export default function App() {
           {/* 3. Library Vault Capacity */}
           <div
             onClick={() => setIsVaultModalOpen(true)}
-            className="glass-card p-4 rounded-3xl cursor-pointer space-y-1 group"
+            className="bg-[#070D18]/90 border-2 border-[#2563EB]/30 hover:border-[#2563EB]/60 p-4 rounded-3xl cursor-pointer space-y-1 group transition-all shadow-md shadow-[#2563EB]/10"
           >
-            <div className="flex items-center justify-between text-slate-500 dark:text-zinc-400">
-              <span className="text-[11px] sm:text-xs font-semibold uppercase tracking-wider">PDF Vault</span>
-              <FileText className="w-4 h-4 text-blue-500 group-hover:text-[#00F5A0] transition" />
+            <div className="flex items-center justify-between text-[#93C5FD] text-[11px] sm:text-xs font-semibold uppercase tracking-wider">
+              <span>PDF Vault</span>
+              <FileText className="w-4 h-4 text-[#60A5FA] group-hover:text-[#CCFF00] transition" />
             </div>
-            <div className="text-xl sm:text-2xl font-black text-slate-900 dark:text-zinc-100 font-mono">
+            <div className="text-xl sm:text-2xl font-black text-white font-mono">
               {vaultItems.length}
             </div>
-            <div className="text-[10px] sm:text-[11px] text-slate-500 dark:text-zinc-400 truncate font-mono">
+            <div className="text-[10px] sm:text-[11px] text-[#93C5FD] truncate font-mono">
               {totalVaultMB} MB / 50MB max
             </div>
           </div>
@@ -655,14 +689,14 @@ export default function App() {
           {/* Action 1: Speak Reminder (Voice Studio) */}
           <button
             onClick={() => setIsVoiceModalOpen(true)}
-            className="glow-action p-3.5 sm:p-4 rounded-3xl text-left transition flex flex-col justify-between group cursor-pointer"
+            className="bg-gradient-to-tr from-[#1D4ED8]/30 to-[#2563EB]/30 border-2 border-[#2563EB]/50 hover:border-[#CCFF00]/70 p-3.5 sm:p-4 rounded-3xl text-left transition flex flex-col justify-between group cursor-pointer shadow-lg shadow-[#2563EB]/20"
           >
-            <div className="w-10 h-10 rounded-2xl bg-[#00F5A0] text-zinc-950 flex items-center justify-center font-black shadow-md shadow-[#00F5A0]/30 group-hover:scale-105 transition-transform mb-2">
+            <div className="w-10 h-10 rounded-2xl bg-[#CCFF00] text-[#03060B] flex items-center justify-center font-black shadow-md shadow-[#CCFF00]/40 group-hover:scale-105 transition-transform mb-2">
               <Mic className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div>
-              <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-zinc-100">Speak Reminder</div>
-              <div className="text-[10px] sm:text-xs text-emerald-700 dark:text-[#00F5A0] font-semibold">Voice Studio</div>
+              <div className="text-xs sm:text-sm font-bold text-white">Speak Reminder</div>
+              <div className="text-[10px] sm:text-xs text-[#CCFF00] font-semibold">Voice Studio</div>
             </div>
           </button>
 
@@ -672,72 +706,91 @@ export default function App() {
               setEditingReminder(null);
               setIsManualModalOpen(true);
             }}
-            className="glass-card p-3.5 sm:p-4 rounded-3xl text-left transition flex flex-col justify-between group cursor-pointer"
+            className="bg-[#070D18]/90 border-2 border-[#2563EB]/30 hover:border-[#CCFF00]/50 p-3.5 sm:p-4 rounded-3xl text-left transition flex flex-col justify-between group cursor-pointer"
           >
-            <div className="w-10 h-10 rounded-2xl bg-white/70 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-slate-800 dark:text-zinc-200 flex items-center justify-center font-black group-hover:scale-105 transition-transform mb-2">
-              <Plus className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-[#2563EB]/25 border border-[#2563EB]/50 text-[#CCFF00] flex items-center justify-center font-black group-hover:scale-105 transition-transform mb-2">
+              <Plus className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div>
-              <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-zinc-100">New Reminder</div>
-              <div className="text-[10px] sm:text-xs text-slate-500 dark:text-zinc-400">Manual entry</div>
+              <div className="text-xs sm:text-sm font-bold text-white">New Reminder</div>
+              <div className="text-[10px] sm:text-xs text-slate-400">Manual entry</div>
             </div>
           </button>
 
           {/* Action 3: Library Vault Documents */}
           <button
             onClick={() => setIsVaultModalOpen(true)}
-            className="glass-card p-3.5 sm:p-4 rounded-3xl text-left transition flex flex-col justify-between group cursor-pointer"
+            className="bg-[#070D18]/90 border-2 border-[#2563EB]/30 hover:border-[#2563EB]/60 p-3.5 sm:p-4 rounded-3xl text-left transition flex flex-col justify-between group cursor-pointer"
           >
-            <div className="w-10 h-10 rounded-2xl bg-white/70 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-blue-500 flex items-center justify-center font-black group-hover:scale-105 transition-transform mb-2">
+            <div className="w-10 h-10 rounded-2xl bg-[#2563EB]/25 border border-[#2563EB]/50 text-[#60A5FA] flex items-center justify-center font-black group-hover:scale-105 transition-transform mb-2">
               <FileText className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-zinc-100">PDF Vault</div>
-              <div className="text-[10px] sm:text-xs text-slate-500 dark:text-zinc-400">&lt; 50MB files</div>
+              <div className="text-xs sm:text-sm font-bold text-white">PDF Vault</div>
+              <div className="text-[10px] sm:text-xs text-slate-400">&lt; 50MB files</div>
             </div>
           </button>
 
           {/* Action 4: Zircon Local AI Chatbot */}
           <button
             onClick={() => setIsChatbotOpen(true)}
-            className="glass-card p-3.5 sm:p-4 rounded-3xl text-left transition flex flex-col justify-between group cursor-pointer hover:border-[#00F5A0]/50"
+            className="bg-[#070D18]/90 border-2 border-[#2563EB]/30 hover:border-[#CCFF00]/60 p-3.5 sm:p-4 rounded-3xl text-left transition flex flex-col justify-between group cursor-pointer"
           >
-            <div className="w-10 h-10 rounded-2xl bg-[#00F5A0]/15 border border-[#00F5A0]/30 text-[#00F5A0] flex items-center justify-center font-black group-hover:scale-105 transition-transform mb-2">
+            <div className="w-10 h-10 rounded-2xl bg-[#2563EB]/25 border border-[#2563EB]/50 text-[#CCFF00] flex items-center justify-center font-black group-hover:scale-105 transition-transform mb-2">
               <Bot className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-zinc-100">AI Assistant</div>
-              <div className="text-[10px] sm:text-xs text-emerald-700 dark:text-[#00F5A0] font-semibold">Local chat</div>
+              <div className="text-xs sm:text-sm font-bold text-white">AI Assistant</div>
+              <div className="text-[10px] sm:text-xs text-[#CCFF00] font-semibold">Local chat</div>
             </div>
           </button>
         </section>
+
+        {/* Weekly Performance & Workload Analysis Card */}
+        <WeeklyAnalysisCard
+          reminders={reminders}
+          voiceNotes={voiceNotes}
+          vaultItems={vaultItems}
+          selectedDayTimestamp={selectedWeeklyDayTimestamp}
+          onSelectDay={setSelectedWeeklyDayTimestamp}
+        />
 
         {/* Reminders Agenda Feed */}
         <section className="space-y-3">
           {/* Feed Header with Filter Pills */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-[#00F5A0]" />
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-700 dark:text-zinc-300">
+              <Clock className="w-4 h-4 text-[#CCFF00]" />
+              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-200">
                 Reminders Agenda
               </h2>
+              {selectedWeeklyDayTimestamp !== null && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#2563EB]/30 text-[#CCFF00] border border-[#2563EB]/50 flex items-center gap-1">
+                  <span>
+                    Filtered: {new Date(selectedWeeklyDayTimestamp).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                  </span>
+                  <button
+                    onClick={() => setSelectedWeeklyDayTimestamp(null)}
+                    className="hover:text-white font-bold ml-1 cursor-pointer"
+                    title="Clear day filter"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
             </div>
 
             {/* Filter Tabs */}
-            <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
               {(['active', 'today', 'all', 'completed', 'missed'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setReminderFilter(tab)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-xl capitalize transition shrink-0 ${
+                  className={`px-3 py-1 text-xs font-semibold rounded-xl capitalize transition shrink-0 cursor-pointer ${
                     reminderFilter === tab
-                      ? isLight
-                        ? 'bg-slate-900 text-white font-bold shadow-sm'
-                        : 'bg-white text-zinc-950 font-bold shadow-sm'
-                      : isLight
-                      ? 'bg-white/80 text-slate-600 hover:text-slate-900 border border-black/5'
-                      : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-white/5'
+                      ? 'bg-[#CCFF00] text-[#03060B] font-black shadow-md shadow-[#CCFF00]/25'
+                      : 'bg-[#070D18]/90 text-slate-400 hover:text-white border border-[#2563EB]/25 hover:border-[#2563EB]/50'
                   }`}
                 >
                   {tab}
@@ -768,8 +821,8 @@ export default function App() {
                 return (
                   <div
                     key={reminder.id}
-                    className={`glass-card p-4 rounded-3xl transition-all ${
-                      isCompleted ? 'opacity-60' : isMissed ? 'border-rose-500/30' : ''
+                    className={`bg-[#070D18]/90 border border-[#2563EB]/25 hover:border-[#CCFF00]/40 p-4 rounded-3xl transition-all shadow-sm ${
+                      isCompleted ? 'opacity-60' : isMissed ? 'border-rose-500/40' : ''
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -777,14 +830,14 @@ export default function App() {
                       <button
                         type="button"
                         onClick={() => handleToggleReminderDone(reminder)}
-                        className={`w-6 h-6 rounded-xl border mt-0.5 flex items-center justify-center transition shrink-0 ${
+                        className={`w-6 h-6 rounded-xl border mt-0.5 flex items-center justify-center transition shrink-0 cursor-pointer ${
                           isCompleted
-                            ? 'bg-[#00F5A0] border-[#00F5A0] text-zinc-950 font-black'
-                            : 'border-slate-300 dark:border-zinc-700 hover:border-[#00F5A0] bg-white/40 dark:bg-zinc-950'
+                            ? 'bg-[#CCFF00] border-[#CCFF00] text-[#03060B] font-black'
+                            : 'border-[#2563EB]/40 hover:border-[#CCFF00] bg-[#03060B]'
                         }`}
                         title={isCompleted ? 'Mark active' : 'Mark completed'}
                       >
-                        {isCompleted && <CheckCircle2 className="w-4 h-4" />}
+                        {isCompleted && <CheckCircle2 className="w-4 h-4 stroke-[3]" />}
                       </button>
 
                       {/* Reminder Content */}
@@ -793,8 +846,8 @@ export default function App() {
                           <h3
                             className={`text-sm font-bold ${
                               isCompleted
-                                ? 'line-through text-slate-400 dark:text-zinc-500'
-                                : 'text-slate-900 dark:text-zinc-100'
+                                ? 'line-through text-slate-500'
+                                : 'text-white'
                             }`}
                           >
                             {reminder.title}
@@ -809,15 +862,15 @@ export default function App() {
                         </div>
 
                         {reminder.notes && (
-                          <p className="text-xs text-slate-600 dark:text-zinc-400 leading-relaxed line-clamp-2">
+                          <p className="text-xs text-slate-300 leading-relaxed line-clamp-2">
                             {reminder.notes}
                           </p>
                         )}
 
                         {/* Timing and Relative Countdown */}
-                        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-zinc-400 font-medium pt-1">
-                          <div className="flex items-center gap-1 text-slate-700 dark:text-zinc-300">
-                            <Calendar className="w-3.5 h-3.5 text-[#00F5A0]" />
+                        <div className="flex items-center gap-3 text-xs text-slate-400 font-medium pt-1">
+                          <div className="flex items-center gap-1 text-slate-200">
+                            <Calendar className="w-3.5 h-3.5 text-[#CCFF00]" />
                             <span>
                               {targetDate.toLocaleDateString(undefined, {
                                 weekday: 'short',
@@ -825,21 +878,21 @@ export default function App() {
                                 day: 'numeric',
                               })}
                             </span>
-                            <span className="text-zinc-400 dark:text-zinc-600">·</span>
-                            <span className="font-semibold text-slate-900 dark:text-zinc-200">
+                            <span className="text-[#2563EB]">·</span>
+                            <span className="font-semibold text-white">
                               {targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
 
-                          <span className="text-zinc-400 dark:text-zinc-600">•</span>
+                          <span className="text-[#2563EB]">•</span>
 
                           <span
                             className={`font-mono font-semibold ${
                               isMissed
-                                ? 'text-rose-500'
+                                ? 'text-rose-400'
                                 : isCompleted
-                                ? 'text-slate-400 dark:text-zinc-500'
-                                : 'text-emerald-700 dark:text-[#00F5A0]'
+                                ? 'text-slate-500'
+                                : 'text-[#CCFF00]'
                             }`}
                           >
                             {getRelativeCountdown(reminder.dueTimestamp, reminder.status)}
@@ -848,12 +901,12 @@ export default function App() {
 
                         {/* Attached Voice Note Widget */}
                         {attachedVoice && (
-                          <div className="mt-2.5 pt-2 border-t border-black/5 dark:border-white/10 flex items-center justify-between">
+                          <div className="mt-2.5 pt-2 border-t border-[#2563EB]/20 flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => playVoiceNoteAudio(attachedVoice)}
-                                className="w-7 h-7 rounded-lg bg-[#00F5A0]/20 text-emerald-800 dark:text-[#00F5A0] hover:bg-[#00F5A0] hover:text-zinc-950 flex items-center justify-center transition"
+                                className="w-7 h-7 rounded-lg bg-[#2563EB]/25 text-[#CCFF00] hover:bg-[#CCFF00] hover:text-[#03060B] border border-[#2563EB]/40 flex items-center justify-center transition cursor-pointer"
                               >
                                 {activePlayingVoiceId === attachedVoice.id ? (
                                   <Pause className="w-3.5 h-3.5" />
@@ -861,7 +914,7 @@ export default function App() {
                                   <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                                 )}
                               </button>
-                              <span className="text-[11px] text-slate-600 dark:text-zinc-400">
+                              <span className="text-[11px] text-slate-300">
                                 Voice Note ({attachedVoice.durationSeconds}s)
                               </span>
                             </div>
@@ -1120,17 +1173,17 @@ export default function App() {
         />
       )}
 
-      {/* Floating Zircon AI Assistant Trigger Button */}
+      {/* Floating Zircon AI Assistant Trigger Button (Electric Cobalt + Acid Lime) */}
       <button
         onClick={() => setIsChatbotOpen(true)}
-        className="fixed bottom-6 right-6 z-40 p-3 sm:px-4 sm:py-3 rounded-full glow-action shadow-2xl flex items-center gap-2.5 group cursor-pointer hover:scale-105 transition-all border border-[#00F5A0]/40"
+        className="fixed bottom-6 right-6 z-40 p-3 sm:px-4 sm:py-3 rounded-full bg-gradient-to-tr from-[#1D4ED8] to-[#2563EB] shadow-2xl shadow-[#2563EB]/40 flex items-center gap-2.5 group cursor-pointer hover:scale-105 transition-all border-2 border-[#CCFF00]/40"
         title="Ask Zircon Local AI Assistant"
       >
         <div className="relative">
-          <Bot className="w-5 h-5 text-[#00F5A0] group-hover:rotate-12 transition-transform" />
-          <span className="w-2 h-2 rounded-full bg-[#00F5A0] pulse-dot absolute -top-1 -right-1" />
+          <Bot className="w-5 h-5 text-[#CCFF00] group-hover:rotate-12 transition-transform" />
+          <span className="w-2 h-2 rounded-full bg-[#CCFF00] pulse-dot absolute -top-1 -right-1" />
         </div>
-        <span className="hidden sm:inline text-xs font-bold text-slate-900 dark:text-zinc-100">
+        <span className="hidden sm:inline text-xs font-black text-white">
           Ask Zircon
         </span>
       </button>
