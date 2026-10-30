@@ -29,8 +29,11 @@ import {
   Bot,
   MessageSquare,
   Pencil,
+  User,
+  LogOut,
+  Lock,
 } from 'lucide-react';
-import { Reminder, VoiceNote, VaultItem, SystemConfig, ReminderStatus } from './types';
+import { Reminder, VoiceNote, VaultItem, SystemConfig, ReminderStatus, AuthorizedUserName } from './types';
 import {
   getDB,
   getAllReminders,
@@ -50,9 +53,14 @@ import {
   reconcileMissedReminders,
   runAutoCleanupSweep,
   ensureStoragePersistence,
+  getActiveUser,
+  setActiveUser,
+  getUserDatabaseName,
+  factoryResetAndShutdown,
 } from './services/db';
 import { notificationManager } from './services/notificationManager';
 import { SplashScreen } from './components/SplashScreen';
+import { LoginScreen } from './components/LoginScreen';
 import { ManualReminderModal } from './components/ManualReminderModal';
 import { VoiceReminderModal } from './components/VoiceReminderModal';
 import { LibraryVaultModal } from './components/LibraryVaultModal';
@@ -63,7 +71,10 @@ import { ChatbotModal } from './components/ChatbotModal';
 export default function App() {
   // Splash & Initialization State
   const [isInitializing, setIsInitializing] = useState(true);
-  const [initStatusMessage, setInitStatusMessage] = useState('Opening Zircon vault...');
+  const [initStatusMessage, setInitStatusMessage] = useState('Verifying Zircon security gate...');
+
+  // Active Authenticated User (Strict Whitelist: Ajitha, Daresh, Arun, Ananya, Kiruba)
+  const [currentUser, setCurrentUser] = useState<AuthorizedUserName | null>(() => getActiveUser());
 
   // Core Data States
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -102,7 +113,9 @@ export default function App() {
 
   // Initialize Theme from localStorage or system config
   useEffect(() => {
-    const savedTheme = localStorage.getItem('zircon_theme') as 'dark' | 'light' | null;
+    const active = getActiveUser();
+    const userThemeKey = active ? `zircon_theme_${active}` : 'zircon_theme';
+    const savedTheme = localStorage.getItem(userThemeKey) as 'dark' | 'light' | null;
     if (savedTheme === 'light' || savedTheme === 'dark') {
       setActiveTheme(savedTheme);
       document.documentElement.classList.toggle('theme-light', savedTheme === 'light');
@@ -111,11 +124,13 @@ export default function App() {
       document.documentElement.classList.add('dark');
       document.documentElement.classList.remove('theme-light');
     }
-  }, []);
+  }, [currentUser]);
 
   const handleToggleTheme = () => {
     const nextTheme = activeTheme === 'dark' ? 'light' : 'dark';
     setActiveTheme(nextTheme);
+    const userThemeKey = currentUser ? `zircon_theme_${currentUser}` : 'zircon_theme';
+    localStorage.setItem(userThemeKey, nextTheme);
     localStorage.setItem('zircon_theme', nextTheme);
     document.documentElement.classList.toggle('theme-light', nextTheme === 'light');
     document.documentElement.classList.toggle('dark', nextTheme === 'dark');
@@ -130,6 +145,8 @@ export default function App() {
       resolved = newTheme;
     }
     setActiveTheme(resolved);
+    const userThemeKey = currentUser ? `zircon_theme_${currentUser}` : 'zircon_theme';
+    localStorage.setItem(userThemeKey, resolved);
     localStorage.setItem('zircon_theme', resolved);
     document.documentElement.classList.toggle('theme-light', resolved === 'light');
     document.documentElement.classList.toggle('dark', resolved === 'dark');
@@ -140,26 +157,90 @@ export default function App() {
   useEffect(() => {
     async function boot() {
       try {
-        setInitStatusMessage('Verifying Zircon database...');
-        await getDB();
+        setInitStatusMessage('Verifying storage sandbox...');
         await ensureStoragePersistence();
 
-        setInitStatusMessage('Seeding local storage sandbox...');
-        await seedInitialDataIfEmpty();
-
-        setInitStatusMessage('Checking missed alarms & schedule queue...');
-        await reconcileMissedReminders();
-
-        setInitStatusMessage('Running 20-day voice auto-cleanup sweep...');
-        await runAutoCleanupSweep();
-
-        await refreshAllData();
+        const active = getActiveUser();
+        if (active) {
+          setInitStatusMessage('Mounting isolated vault sandbox...');
+          await getDB();
+          await seedInitialDataIfEmpty(active);
+          await reconcileMissedReminders();
+          await runAutoCleanupSweep();
+          await refreshAllData();
+        }
       } catch (err) {
         console.error('Boot error:', err);
       }
     }
     boot();
   }, []);
+
+  // Strict Login Success Handler
+  const handleLoginSuccess = async (userName: AuthorizedUserName) => {
+    notificationManager.cancelAll();
+    setActiveUser(userName);
+    setCurrentUser(userName);
+
+    // Apply user theme if stored
+    const userTheme = (localStorage.getItem(`zircon_theme_${userName}`) || 'dark') as 'dark' | 'light';
+    setActiveTheme(userTheme);
+    document.documentElement.classList.toggle('theme-light', userTheme === 'light');
+    document.documentElement.classList.toggle('dark', userTheme === 'dark');
+
+    // Mount user vault & initialize data
+    await getDB();
+    await seedInitialDataIfEmpty(userName);
+    await reconcileMissedReminders();
+    await runAutoCleanupSweep();
+    await refreshAllData();
+  };
+
+  // Clean Logout Handler (Guarantees zero bleed to next user)
+  const handleLogout = () => {
+    // 1. Cancel all timers so Person A notifications never fire for Person B
+    notificationManager.cancelAll();
+
+    // 2. Clear state in memory
+    setActiveUser(null);
+    setCurrentUser(null);
+    setReminders([]);
+    setVoiceNotes([]);
+    setVaultItems([]);
+    setActiveFiredReminder(null);
+    setIsManualModalOpen(false);
+    setIsVoiceModalOpen(false);
+    setIsVaultModalOpen(false);
+    setIsHealthModalOpen(false);
+    setIsSettingsModalOpen(false);
+    setIsChatbotOpen(false);
+  };
+
+  // Factory Reset & Vault Shutdown Handler (Complete delete of data and reset to original phase)
+  const handleFactoryReset = async () => {
+    // Cancel any pending timers immediately
+    notificationManager.cancelAll();
+
+    // Perform complete wipe of all databases & localStorage
+    await factoryResetAndShutdown();
+
+    // Reset all React state to uninitialized phase
+    setActiveUser(null);
+    setCurrentUser(null);
+    setReminders([]);
+    setVoiceNotes([]);
+    setVaultItems([]);
+    setActiveFiredReminder(null);
+    setIsManualModalOpen(false);
+    setIsVoiceModalOpen(false);
+    setIsVaultModalOpen(false);
+    setIsHealthModalOpen(false);
+    setIsSettingsModalOpen(false);
+    setIsChatbotOpen(false);
+    setActiveTheme('dark');
+    document.documentElement.classList.remove('theme-light');
+    document.documentElement.classList.add('dark');
+  };
 
   // Arm exact alarms whenever reminders list changes
   useEffect(() => {
@@ -365,6 +446,11 @@ export default function App() {
     );
   }
 
+  // Strict Name-based Identity Access Gate
+  if (!currentUser) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
   const isLight = activeTheme === 'light';
 
   return (
@@ -474,6 +560,23 @@ export default function App() {
           >
             <Settings className="w-4 h-4" />
           </button>
+
+          {/* Vault Security Status & Lock Trigger (Anonymous - Never shows user name) */}
+          <div className="flex items-center gap-1.5 pl-1.5 sm:pl-2.5 border-l border-black/10 dark:border-white/10">
+            <button
+              onClick={handleLogout}
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                isLight
+                  ? 'bg-white border-black/10 text-slate-700 hover:text-rose-600 hover:border-rose-300 shadow-sm'
+                  : 'bg-zinc-900/90 border-white/10 text-zinc-300 hover:text-rose-400 hover:border-rose-500/40'
+              }`}
+              title="Lock Vault & Close Session"
+            >
+              <span className="w-2 h-2 rounded-full bg-[#00F5A0] pulse-dot shrink-0" />
+              <Lock className="w-3.5 h-3.5 text-[#00F5A0] shrink-0" />
+              <span className="hidden sm:inline">Lock Vault</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -975,6 +1078,9 @@ export default function App() {
           isOpen={isSettingsModalOpen}
           onClose={() => setIsSettingsModalOpen(false)}
           config={config}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+          onFactoryReset={handleFactoryReset}
           onSaveConfig={async (upd) => {
             const newCfg = await saveSystemConfig(upd);
             setConfig(newCfg);

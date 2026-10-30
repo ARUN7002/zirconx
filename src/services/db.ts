@@ -3,18 +3,84 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Reminder, VoiceNote, VaultItem, SystemConfig, ChatMessage } from '../types';
+import { Reminder, VoiceNote, VaultItem, SystemConfig, ChatMessage, AUTHORIZED_USERS, AuthorizedUserName } from '../types';
 
-const DB_NAME = 'ChronicleVaultDB';
+export { AUTHORIZED_USERS };
+export type { AuthorizedUserName };
+
+export function normalizeAuthorizedUser(input: string): AuthorizedUserName | null {
+  if (!input) return null;
+  const trimmed = input.trim().toLowerCase();
+  const match = AUTHORIZED_USERS.find((u) => u.toLowerCase() === trimmed);
+  return match || null;
+}
+
 const DB_VERSION = 2;
 
+let currentActiveUser: AuthorizedUserName | null = null;
+let currentDbName = '';
 let dbInstance: IDBDatabase | null = null;
 
+export function getActiveUser(): AuthorizedUserName | null {
+  if (currentActiveUser) return currentActiveUser;
+  if (typeof window === 'undefined') return null;
+  const saved = localStorage.getItem('zircon_active_user');
+  if (saved) {
+    const valid = normalizeAuthorizedUser(saved);
+    if (valid) {
+      currentActiveUser = valid;
+      return valid;
+    }
+  }
+  return null;
+}
+
+export function setActiveUser(user: AuthorizedUserName | null): void {
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch {
+      // ignore
+    }
+    dbInstance = null;
+  }
+  currentActiveUser = user;
+  currentDbName = '';
+  if (typeof window !== 'undefined') {
+    if (user) {
+      localStorage.setItem('zircon_active_user', user);
+    } else {
+      localStorage.removeItem('zircon_active_user');
+    }
+  }
+}
+
+export function getUserDatabaseName(userName: string | null): string {
+  if (userName) {
+    return `ZirconVault_${userName}`;
+  }
+  return 'ZirconVault_Guest';
+}
+
 export async function getDB(): Promise<IDBDatabase> {
-  if (dbInstance) return dbInstance;
+  const activeUser = getActiveUser();
+  const targetDbName = getUserDatabaseName(activeUser);
+
+  if (dbInstance && currentDbName === targetDbName) {
+    return dbInstance;
+  }
+
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch {
+      // ignore
+    }
+    dbInstance = null;
+  }
 
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    const request = indexedDB.open(targetDbName, DB_VERSION);
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -55,6 +121,7 @@ export async function getDB(): Promise<IDBDatabase> {
 
     request.onsuccess = async (event) => {
       dbInstance = (event.target as IDBOpenDBRequest).result;
+      currentDbName = targetDbName;
       resolve(dbInstance);
     };
 
@@ -378,10 +445,60 @@ export async function ensureStoragePersistence(): Promise<boolean> {
   return false;
 }
 
-// Initialize seed data if database is fresh
-export async function seedInitialDataIfEmpty(): Promise<void> {
+async function migrateFromLegacyDBIfPresent(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof indexedDB === 'undefined') return resolve(false);
+    const req = indexedDB.open('ChronicleVaultDB', 2);
+    req.onerror = () => resolve(false);
+    req.onsuccess = async () => {
+      const legacyDb = req.result;
+      if (!legacyDb.objectStoreNames.contains('reminders')) {
+        legacyDb.close();
+        return resolve(false);
+      }
+      try {
+        const tx = legacyDb.transaction('reminders', 'readonly');
+        const store = tx.objectStore('reminders');
+        const getAllReq = store.getAll();
+        getAllReq.onsuccess = async () => {
+          const legacyReminders = getAllReq.result as Reminder[];
+          legacyDb.close();
+          if (legacyReminders && legacyReminders.length > 0) {
+            for (const r of legacyReminders) {
+              await saveReminder(r);
+            }
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        };
+        getAllReq.onerror = () => {
+          legacyDb.close();
+          resolve(false);
+        };
+      } catch {
+        legacyDb.close();
+        resolve(false);
+      }
+    };
+  });
+}
+
+// Initialize seed data if database is fresh for active user
+export async function seedInitialDataIfEmpty(forUser?: string): Promise<void> {
+  const user = forUser || getActiveUser() || 'Arun';
   const reminders = await getAllReminders();
   if (reminders.length > 0) return;
+
+  // If user is Arun and legacy ChronicleVaultDB exists with data, migrate it!
+  if (user === 'Arun') {
+    try {
+      const hasLegacy = await migrateFromLegacyDBIfPresent();
+      if (hasLegacy) return;
+    } catch {
+      // Continue to fresh seed
+    }
+  }
 
   const now = Date.now();
   const oneHour = 60 * 60 * 1000;
@@ -389,9 +506,9 @@ export async function seedInitialDataIfEmpty(): Promise<void> {
 
   const sampleReminders: Reminder[] = [
     {
-      id: 'seed-1',
-      title: 'Review Quarterly Tax Filing',
-      notes: 'Check deduction forms and upload confirmation PDF into Library Vault',
+      id: `seed-${user.toLowerCase()}-1`,
+      title: 'Welcome to your private Zircon Vault',
+      notes: 'Strict account isolation active. Reminders, voice notes, and PDF documents stored here are private to your identity and will never leak to another account.',
       dueTimestamp: now + 3 * oneHour,
       createdAt: now - 30 * 60 * 1000,
       priority: 'high',
@@ -400,9 +517,9 @@ export async function seedInitialDataIfEmpty(): Promise<void> {
       snoozeCount: 0,
     },
     {
-      id: 'seed-2',
-      title: 'Daily Medication & Hydration',
-      notes: 'Take vitamins with dinner',
+      id: `seed-${user.toLowerCase()}-2`,
+      title: 'Review Private Document Vault & Alarm Diagnostics',
+      notes: 'Test uploading a PDF document up to 50MB into Library Vault or schedule voice alarms.',
       dueTimestamp: now + 6 * oneHour,
       createdAt: now - 2 * oneHour,
       priority: 'urgent',
@@ -411,9 +528,9 @@ export async function seedInitialDataIfEmpty(): Promise<void> {
       snoozeCount: 0,
     },
     {
-      id: 'seed-3',
-      title: 'Submit Vehicle Insurance Renewal',
-      notes: 'Policy doc is securely backed up in the Library Vault',
+      id: `seed-${user.toLowerCase()}-3`,
+      title: 'Schedule personal reminder with mobile keypad',
+      notes: 'Use the new mobile numeric date/time inputs and mini calendar to schedule upcoming tasks.',
       dueTimestamp: now + tomorrow + 2 * oneHour,
       createdAt: now - 4 * oneHour,
       priority: 'normal',
@@ -429,41 +546,24 @@ export async function seedInitialDataIfEmpty(): Promise<void> {
 
   // Sample voice note with 20-day retention
   const sampleVoiceNote: VoiceNote = {
-    id: 'seed-voice-1',
+    id: `seed-voice-${user.toLowerCase()}-1`,
     blobKey: 'seed_audio_sample',
     durationSeconds: 7.4,
-    transcript: 'Remind me to submit the tax audit report tomorrow at 4 PM',
-    createdAt: now - 2 * 86400 * 1000, // 2 days ago
-    expiresAt: now + 18 * 86400 * 1000, // 18 days remaining
+    transcript: `Remind me to check personal vault tasks tomorrow at 4 PM`,
+    createdAt: now - 2 * 86400 * 1000,
+    expiresAt: now + 18 * 86400 * 1000,
     isSaved: false,
     audioFormat: 'audio/webm',
   };
   await saveVoiceNote(sampleVoiceNote);
 
-  // Sample permanent PDF in Library Vault (under 50 MB)
-  const samplePdfContent = '%PDF-1.4 sample secure document content for local vault';
-  const sampleBlob = new Blob([samplePdfContent], { type: 'application/pdf' });
-  const sampleHash = await computeFileHash(sampleBlob);
-
-  const sampleVaultItem: VaultItem = {
-    id: 'seed-vault-1',
-    fileName: 'vehicle_insurance_policy_2026.pdf',
-    fileSizeBytes: 2480000, // ~2.48 MB (well under 50 MB)
-    mimeType: 'application/pdf',
-    blobKey: 'vault_sample_insurance',
-    fileHash: sampleHash,
-    createdAt: now - 86400 * 1000,
-    isPermanent: true,
-  };
-  await saveVaultItem(sampleVaultItem);
-
   // Initial welcome message in chat history
   const chatMessages = await getAllChatMessages();
   if (chatMessages.length === 0) {
     await saveChatMessage({
-      id: 'msg-welcome',
+      id: `msg-welcome-${user.toLowerCase()}`,
       sender: 'assistant',
-      text: "👋 Welcome to **Zircon AI Assistant**! I am your 100% offline on-device companion. I can help you schedule reminders, search your 50MB PDF Library Vault, review system health, and answer questions without internet. Try typing:\n\n• *'What are my reminders today?'*\n• *'Remind me to call the accountant tomorrow at 3 PM'*\n• *'What documents are in my vault?'*\n• *'Check system health'*",
+      text: '👋 Welcome to your personal on-device **Zircon AI Terminal**. All your scheduled alarms, voice memos, and PDF documents are strictly isolated on this device. No other user can access your data.\n\n• *\'What are my reminders today?\'*\n• *\'Remind me to review reports tomorrow at 3 PM\'*\n• *\'Check my vault documents\'*\n• *\'Check system health\'*',
       timestamp: Date.now() - 30000,
       actionType: 'general',
     });
@@ -506,5 +606,55 @@ export async function clearChatHistory(): Promise<void> {
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
+}
+
+// Complete Data Wipe and Terminal Shutdown
+export async function factoryResetAndShutdown(): Promise<void> {
+  // 1. Close open DB connection
+  if (dbInstance) {
+    try {
+      dbInstance.close();
+    } catch {
+      // ignore
+    }
+    dbInstance = null;
+  }
+  currentDbName = '';
+  currentActiveUser = null;
+
+  // 2. Delete all user and legacy databases
+  const databasesToDelete = [
+    'ChronicleVaultDB',
+    'ZirconVault_Guest',
+    ...AUTHORIZED_USERS.map((u) => `ZirconVault_${u}`),
+  ];
+
+  for (const dbName of databasesToDelete) {
+    try {
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase(dbName);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Purge all localStorage entries
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.clear();
+    } catch {
+      localStorage.removeItem('zircon_active_user');
+      localStorage.removeItem('zircon_theme');
+      localStorage.removeItem('zircon_llm_model');
+      for (const u of AUTHORIZED_USERS) {
+        localStorage.removeItem(`zircon_theme_${u}`);
+        localStorage.removeItem(`zircon_llm_model_${u}`);
+      }
+    }
+  }
 }
 

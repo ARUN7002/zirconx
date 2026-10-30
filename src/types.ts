@@ -3,6 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export const AUTHORIZED_USERS = ['Ajitha', 'Daresh', 'Arun', 'Ananya', 'Kiruba'] as const;
+export type AuthorizedUserName = (typeof AUTHORIZED_USERS)[number];
+
 export type PriorityLevel = 'low' | 'normal' | 'high' | 'urgent';
 
 export type ReminderStatus = 'active' | 'completed' | 'snoozed' | 'missed';

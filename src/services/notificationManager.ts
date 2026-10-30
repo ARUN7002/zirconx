@@ -77,6 +77,13 @@ class NotificationManager {
     }
   }
 
+  public cancelAll(): void {
+    for (const timerId of this.scheduledTimeouts.values()) {
+      window.clearTimeout(timerId);
+    }
+    this.scheduledTimeouts.clear();
+  }
+
   public async triggerReminder(
     reminder: Reminder,
     chimeType: 'bell' | 'alert' | 'gentle' = 'bell',
