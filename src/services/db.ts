@@ -610,6 +610,11 @@ export async function clearChatHistory(): Promise<void> {
 
 // Complete Data Wipe and Terminal Shutdown
 export async function factoryResetAndShutdown(): Promise<void> {
+  return completeResetEraseAll();
+}
+
+// Complete Reset from New: Erase All Memory, Files, Databases, and Storage
+export async function completeResetEraseAll(): Promise<void> {
   // 1. Close open DB connection
   if (dbInstance) {
     try {
@@ -622,14 +627,26 @@ export async function factoryResetAndShutdown(): Promise<void> {
   currentDbName = '';
   currentActiveUser = null;
 
-  // 2. Delete all user and legacy databases
-  const databasesToDelete = [
+  // 2. Query all indexedDB databases if supported by browser
+  const allDbNames = new Set<string>([
     'ChronicleVaultDB',
     'ZirconVault_Guest',
     ...AUTHORIZED_USERS.map((u) => `ZirconVault_${u}`),
-  ];
+  ]);
 
-  for (const dbName of databasesToDelete) {
+  if (typeof indexedDB !== 'undefined' && typeof indexedDB.databases === 'function') {
+    try {
+      const dbs = await indexedDB.databases();
+      for (const d of dbs) {
+        if (d.name) allDbNames.add(d.name);
+      }
+    } catch {
+      // fallback to pre-defined set
+    }
+  }
+
+  // Delete all detected databases
+  for (const dbName of allDbNames) {
     try {
       await new Promise<void>((resolve) => {
         const req = indexedDB.deleteDatabase(dbName);
@@ -642,7 +659,17 @@ export async function factoryResetAndShutdown(): Promise<void> {
     }
   }
 
-  // 3. Purge all localStorage entries
+  // 3. Purge Web Cache API (Cached voice blobs, service caches, etc.)
+  if (typeof window !== 'undefined' && 'caches' in window) {
+    try {
+      const cacheNames = await window.caches.keys();
+      await Promise.all(cacheNames.map((name) => window.caches.delete(name)));
+    } catch {
+      // ignore
+    }
+  }
+
+  // 4. Purge all localStorage entries
   if (typeof window !== 'undefined') {
     try {
       localStorage.clear();
@@ -650,10 +677,17 @@ export async function factoryResetAndShutdown(): Promise<void> {
       localStorage.removeItem('zircon_active_user');
       localStorage.removeItem('zircon_theme');
       localStorage.removeItem('zircon_llm_model');
+      localStorage.removeItem('zircon_health_access');
       for (const u of AUTHORIZED_USERS) {
         localStorage.removeItem(`zircon_theme_${u}`);
         localStorage.removeItem(`zircon_llm_model_${u}`);
       }
+    }
+
+    try {
+      sessionStorage.clear();
+    } catch {
+      // ignore
     }
   }
 }

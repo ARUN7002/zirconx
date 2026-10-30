@@ -57,6 +57,7 @@ export interface SystemConfig {
   lastCleanupTimestamp: number;
   theme: 'dark' | 'light' | 'system';
   voiceAnnouncementEnabled?: boolean; // Text-to-speech spoken reminder announcement
+  healthAccessEnabled?: boolean; // Health monitoring and diagnostic access switch
 }
 
 export interface SubsystemHealth {

@@ -57,6 +57,7 @@ import {
   setActiveUser,
   getUserDatabaseName,
   factoryResetAndShutdown,
+  completeResetEraseAll,
 } from './services/db';
 import { notificationManager } from './services/notificationManager';
 import { SplashScreen } from './components/SplashScreen';
@@ -91,6 +92,15 @@ export default function App() {
 
   // Theme State: 'dark' | 'light'
   const [activeTheme, setActiveTheme] = useState<'dark' | 'light'>('dark');
+
+  // System Health Access Switch State (ON/OFF)
+  const [healthAccessEnabled, setHealthAccessEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('zircon_health_access');
+      if (stored !== null) return stored === 'true';
+    }
+    return true;
+  });
 
   // Navigation & Modals
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -216,15 +226,15 @@ export default function App() {
     setIsChatbotOpen(false);
   };
 
-  // Factory Reset & Vault Shutdown Handler (Complete delete of data and reset to original phase)
-  const handleFactoryReset = async () => {
-    // Cancel any pending timers immediately
+  // Complete Reset from New (Violet Option / Erase All Memory & Files)
+  const handleCompleteReset = async () => {
+    // 1. Cancel all notifications & exact audio alarms
     notificationManager.cancelAll();
 
-    // Perform complete wipe of all databases & localStorage
-    await factoryResetAndShutdown();
+    // 2. Perform complete wipe of all memory, databases, caches & localStorage
+    await completeResetEraseAll();
 
-    // Reset all React state to uninitialized phase
+    // 3. Reset all React state to uninitialized virgin phase
     setActiveUser(null);
     setCurrentUser(null);
     setReminders([]);
@@ -238,8 +248,14 @@ export default function App() {
     setIsSettingsModalOpen(false);
     setIsChatbotOpen(false);
     setActiveTheme('dark');
+    setHealthAccessEnabled(true);
     document.documentElement.classList.remove('theme-light');
     document.documentElement.classList.add('dark');
+  };
+
+  // Factory Reset & Vault Shutdown Handler (Red Button Action)
+  const handleFactoryReset = async () => {
+    return handleCompleteReset();
   };
 
   // Arm exact alarms whenever reminders list changes
@@ -533,7 +549,7 @@ export default function App() {
             )}
           </button>
 
-          {/* Health Diagnostics Trigger with Pulse Dot */}
+          {/* Health Diagnostics Trigger with Access Switch Indicator */}
           <button
             onClick={() => setIsHealthModalOpen(true)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition cursor-pointer ${
@@ -541,11 +557,15 @@ export default function App() {
                 ? 'bg-white border-black/10 text-slate-700 hover:border-black/20 shadow-sm'
                 : 'bg-zinc-900/90 border-white/10 text-zinc-300 hover:border-white/20'
             }`}
-            title="System Health Diagnostics"
+            title={`System Health Diagnostics (${healthAccessEnabled ? 'Access ON' : 'Access OFF'})`}
           >
-            <span className="w-2 h-2 rounded-full bg-[#00F5A0] pulse-dot" />
+            <span
+              className={`w-2 h-2 rounded-full ${
+                healthAccessEnabled ? 'bg-[#00F5A0] pulse-dot' : 'bg-zinc-500'
+              }`}
+            />
             <Activity className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
-            <span className="hidden sm:inline">Health</span>
+            <span className="hidden sm:inline">Health{healthAccessEnabled ? '' : ' (Off)'}</span>
           </button>
 
           {/* System Settings Trigger */}
@@ -1070,6 +1090,12 @@ export default function App() {
         <SystemHealthModal
           isOpen={isHealthModalOpen}
           onClose={() => setIsHealthModalOpen(false)}
+          healthAccessEnabled={healthAccessEnabled}
+          onToggleHealthAccess={(enabled) => {
+            setHealthAccessEnabled(enabled);
+            localStorage.setItem('zircon_health_access', String(enabled));
+          }}
+          onCompleteReset={handleCompleteReset}
         />
       )}
 
@@ -1081,9 +1107,13 @@ export default function App() {
           currentUser={currentUser}
           onLogout={handleLogout}
           onFactoryReset={handleFactoryReset}
+          onCompleteReset={handleCompleteReset}
           onSaveConfig={async (upd) => {
             const newCfg = await saveSystemConfig(upd);
             setConfig(newCfg);
+            if (typeof upd.healthAccessEnabled === 'boolean') {
+              setHealthAccessEnabled(upd.healthAccessEnabled);
+            }
           }}
           onThemeChange={handleSetSpecificTheme}
           onRefreshData={refreshAllData}

@@ -23,10 +23,11 @@ import {
   Trash2,
   Power,
   Lock,
+  RotateCcw,
 } from 'lucide-react';
 import { SystemConfig } from '../types';
 import { playChime, speakVoiceAnnouncement, isSpeechSynthesisSupported } from '../services/audioChime';
-import { runAutoCleanupSweep, getAllReminders, getAllVoiceNotes, getAllVaultItems, getAllChatMessages, getUserDatabaseName } from '../services/db';
+import { runAutoCleanupSweep, getAllReminders, getAllVoiceNotes, getAllVaultItems, getAllChatMessages, getUserDatabaseName, completeResetEraseAll } from '../services/db';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ interface SettingsModalProps {
   currentUser?: string | null;
   onLogout?: () => void;
   onFactoryReset?: () => Promise<void> | void;
+  onCompleteReset?: () => Promise<void> | void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -50,6 +52,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentUser,
   onLogout,
   onFactoryReset,
+  onCompleteReset,
 }) => {
   const [retentionDays, setRetentionDays] = useState(config.retentionDays || 20);
   const [voiceLanguage, setVoiceLanguage] = useState(config.voiceLanguage || 'en-US');
@@ -58,11 +61,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [voiceAnnouncementEnabled, setVoiceAnnouncementEnabled] = useState(
     config.voiceAnnouncementEnabled || false
   );
+  const [healthAccessEnabled, setHealthAccessEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('zircon_health_access');
+      if (stored !== null) return stored === 'true';
+    }
+    return config.healthAccessEnabled !== false;
+  });
   const [cleanupStatus, setCleanupStatus] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [showVioletResetConfirm, setShowVioletResetConfirm] = useState(false);
+  const [isVioletResetting, setIsVioletResetting] = useState(false);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -71,10 +83,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setChimeType(config.notificationChime || 'bell');
       setTheme(config.theme || 'dark');
       setVoiceAnnouncementEnabled(config.voiceAnnouncementEnabled || false);
+      const stored = typeof window !== 'undefined' ? localStorage.getItem('zircon_health_access') : null;
+      setHealthAccessEnabled(stored !== null ? stored === 'true' : config.healthAccessEnabled !== false);
       setCleanupStatus(null);
       setSaveSuccess(false);
       setShowResetConfirm(false);
       setIsResetting(false);
+      setShowVioletResetConfirm(false);
+      setIsVioletResetting(false);
     }
   }, [isOpen, config]);
 
@@ -88,12 +104,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleSave = async () => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('zircon_health_access', String(healthAccessEnabled));
+    }
     await onSaveConfig({
       retentionDays,
       voiceLanguage,
       notificationChime: chimeType,
       theme,
       voiceAnnouncementEnabled,
+      healthAccessEnabled,
     });
     setSaveSuccess(true);
     setTimeout(() => {
@@ -438,7 +458,66 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             )}
           </div>
 
-          {/* 5. Emergency Database Backup */}
+          {/* 5. Health Diagnostic & Sensor Access Switch */}
+          <div className="p-4 bg-white/40 dark:bg-zinc-950/60 border border-black/5 dark:border-white/10 rounded-2xl flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all ${
+                  healthAccessEnabled
+                    ? 'bg-[#00F5A0]/20 text-[#00F5A0] border-[#00F5A0]/40 shadow-sm'
+                    : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                }`}
+              >
+                <Power className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                    Health Diagnostic & Hardware Access
+                  </span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border ${
+                      healthAccessEnabled
+                        ? 'bg-[#00F5A0]/15 text-emerald-800 dark:text-[#00F5A0] border-[#00F5A0]/30'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}
+                  >
+                    {healthAccessEnabled ? 'Access ON' : 'Access OFF'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                  {healthAccessEnabled
+                    ? 'Continuous sensor probing, microphone testing, and audio telemetry active.'
+                    : 'Diagnostic probes turned off for privacy.'}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={healthAccessEnabled}
+              onClick={() => {
+                const next = !healthAccessEnabled;
+                setHealthAccessEnabled(next);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('zircon_health_access', String(next));
+                }
+              }}
+              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                healthAccessEnabled ? 'bg-[#00F5A0]' : 'bg-zinc-700 dark:bg-zinc-800'
+              }`}
+            >
+              <span className="sr-only">Toggle Health Access</span>
+              <span
+                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-zinc-950 shadow-md ring-0 transition duration-200 ease-in-out ${
+                  healthAccessEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* 6. Emergency Database Backup */}
           <div className="p-4 bg-white/40 dark:bg-zinc-950/60 border border-black/5 dark:border-white/10 rounded-2xl flex items-center justify-between">
             <div>
               <div className="text-xs font-bold text-slate-800 dark:text-zinc-200">Local JSON Data Backup</div>
@@ -455,7 +534,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           </div>
 
-          {/* 6. Emergency Complete Delete of Data & Vault Shutdown */}
+          {/* 7. Emergency Complete Delete of Data & Vault Shutdown (Red Button) */}
           <div className="p-4 bg-rose-500/10 dark:bg-rose-950/25 border-2 border-rose-500/40 rounded-2xl space-y-3">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
@@ -465,7 +544,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="text-xs font-bold text-rose-800 dark:text-rose-300 uppercase tracking-wider flex items-center gap-2">
                   <span>Vault Reset & Emergency Shutdown</span>
                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/40">
-                    Wipe All Data
+                    Red Button Action
                   </span>
                 </div>
                 <p className="text-[11px] text-rose-700/80 dark:text-rose-300/70 mt-1 leading-relaxed">
@@ -513,6 +592,75 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   >
                     <Power className="w-3.5 h-3.5" />
                     <span>{isResetting ? 'Wiping & Shutting Down...' : 'Confirm Wipe & Reset'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 8. Complete Reset Option from New (Violet Colour Button) */}
+          <div className="p-4 bg-violet-500/10 dark:bg-violet-950/25 border-2 border-violet-500/40 rounded-2xl space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-violet-500/20 text-violet-400 flex items-center justify-center shrink-0 border border-violet-500/30">
+                <RotateCcw className="w-5 h-5 text-violet-400" />
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-bold text-violet-800 dark:text-violet-300 uppercase tracking-wider flex items-center gap-2">
+                  <span>Complete Reset from New</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-500/25 text-violet-700 dark:text-violet-300 border border-violet-500/40">
+                    Violet Option
+                  </span>
+                </div>
+                <p className="text-[11px] text-violet-700/80 dark:text-violet-300/70 mt-1 leading-relaxed">
+                  Complete erase of memory and complete erase of files (PDF documents, voice notes), user databases, chat logs, and local caches. Restores the application to its original pristine phase.
+                </p>
+              </div>
+            </div>
+
+            {!showVioletResetConfirm ? (
+              <button
+                type="button"
+                onClick={() => setShowVioletResetConfirm(true)}
+                className="w-full py-3 px-4 rounded-xl bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-violet-900/30 transition cursor-pointer"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Complete Reset from New (Violet)</span>
+              </button>
+            ) : (
+              <div className="p-3 bg-violet-600/10 dark:bg-violet-950/60 border border-violet-500/50 rounded-xl space-y-2.5">
+                <div className="text-[11px] font-bold text-violet-700 dark:text-violet-300 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-violet-400 shrink-0" />
+                  <span>Are you completely sure? This will erase all memory and all files, resetting to fresh factory phase.</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={isVioletResetting}
+                    onClick={() => setShowVioletResetConfirm(false)}
+                    className="py-2 px-3 rounded-lg bg-slate-200 dark:bg-zinc-800 hover:bg-slate-300 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-semibold transition cursor-pointer text-center"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isVioletResetting}
+                    onClick={async () => {
+                      setIsVioletResetting(true);
+                      if (onCompleteReset) {
+                        await onCompleteReset();
+                      } else if (onFactoryReset) {
+                        await onFactoryReset();
+                      } else {
+                        await completeResetEraseAll();
+                        window.location.reload();
+                      }
+                      setIsVioletResetting(false);
+                      onClose();
+                    }}
+                    className="py-2 px-3 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{isVioletResetting ? 'Erasing Everything...' : 'Confirm Violet Complete Reset'}</span>
                   </button>
                 </div>
               </div>

@@ -18,28 +18,85 @@ import {
   XCircle,
   RefreshCw,
   Sparkles,
+  Power,
+  RotateCcw,
+  Shield,
+  ShieldAlert,
+  Trash2,
 } from 'lucide-react';
 import { SubsystemHealth } from '../types';
 import { notificationManager } from '../services/notificationManager';
-import { ensureStoragePersistence, reconcileMissedReminders, getActiveUser, getUserDatabaseName } from '../services/db';
+import { ensureStoragePersistence, reconcileMissedReminders, getActiveUser, getUserDatabaseName, completeResetEraseAll } from '../services/db';
 import { isSpeechSynthesisSupported, speakVoiceAnnouncement } from '../services/audioChime';
 
 interface SystemHealthModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onCompleteReset?: () => Promise<void> | void;
+  healthAccessEnabled?: boolean;
+  onToggleHealthAccess?: (enabled: boolean) => void;
 }
 
-export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({ isOpen, onClose }) => {
+export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({
+  isOpen,
+  onClose,
+  onCompleteReset,
+  healthAccessEnabled = true,
+  onToggleHealthAccess,
+}) => {
+  const [healthAccess, setHealthAccess] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('zircon_health_access');
+      if (stored !== null) return stored === 'true';
+    }
+    return healthAccessEnabled;
+  });
   const [subsystems, setSubsystems] = useState<SubsystemHealth[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [overallHealth, setOverallHealth] = useState<'healthy' | 'warning' | 'error'>('healthy');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
-      runFullDiagnostics();
+      if (healthAccess) {
+        runFullDiagnostics();
+      } else {
+        setSubsystems([]);
+        setOverallHealth('warning');
+      }
+      setShowResetConfirm(false);
+      setIsResetting(false);
     }
-  }, [isOpen]);
+  }, [isOpen, healthAccess]);
+
+  const handleToggleAccess = () => {
+    const nextVal = !healthAccess;
+    setHealthAccess(nextVal);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('zircon_health_access', String(nextVal));
+    }
+    if (onToggleHealthAccess) {
+      onToggleHealthAccess(nextVal);
+    }
+    setActionNotice(nextVal ? 'Health access turned ON. Running diagnostics...' : 'Health access turned OFF. Probes paused.');
+  };
+
+  const handleExecuteReset = async () => {
+    try {
+      setIsResetting(true);
+      if (onCompleteReset) {
+        await onCompleteReset();
+      } else {
+        await completeResetEraseAll();
+        window.location.reload();
+      }
+    } finally {
+      setIsResetting(false);
+      onClose();
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -333,36 +390,161 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({ isOpen, on
           </div>
         )}
 
-        {/* Subsystems Matrix */}
-        <div className="p-6 space-y-3 overflow-y-auto flex-1">
-          {subsystems.map((sub, idx) => (
-            <div
-              key={idx}
-              className="p-4 bg-white/50 dark:bg-zinc-950/70 border border-black/5 dark:border-white/10 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-[#00F5A0]/30 transition"
+        {/* Modal Content Body */}
+        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          {/* 1. Turn On / Turn Off Access Switch */}
+          <div className="p-4 bg-white/70 dark:bg-zinc-950/80 border border-black/10 dark:border-white/10 rounded-2xl flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all ${
+                  healthAccess
+                    ? 'bg-[#00F5A0]/20 text-[#00F5A0] border-[#00F5A0]/40 shadow-sm'
+                    : 'bg-zinc-800/80 text-zinc-500 border-zinc-700/60'
+                }`}
+              >
+                <Power className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-900 dark:text-zinc-100">
+                    Health Diagnostic & Hardware Access
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded-full border ${
+                      healthAccess
+                        ? 'bg-[#00F5A0]/15 text-emerald-800 dark:text-[#00F5A0] border-[#00F5A0]/30'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}
+                  >
+                    {healthAccess ? 'Access ON' : 'Access OFF'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                  {healthAccess
+                    ? 'Live continuous sensor probing, microphone checks, and alarm audio tests are enabled.'
+                    : 'Health telemetry and active probes are turned off for privacy.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Switch Toggle */}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={healthAccess}
+              onClick={handleToggleAccess}
+              className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                healthAccess ? 'bg-[#00F5A0]' : 'bg-zinc-700 dark:bg-zinc-800'
+              }`}
+              title={healthAccess ? 'Click to turn OFF health access' : 'Click to turn ON health access'}
             >
-              <div className="flex items-start gap-3 flex-1">
-                <div className="mt-0.5">{statusIcons[sub.status]}</div>
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-zinc-200">
-                    {subsystemIcons[sub.name] || <Clock className="w-4 h-4 text-zinc-400" />}
-                    <span>{sub.name}</span>
+              <span className="sr-only">Toggle Health Access</span>
+              <span
+                className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-zinc-950 shadow-md ring-0 transition duration-200 ease-in-out ${
+                  healthAccess ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Subsystems Matrix */}
+          {!healthAccess ? (
+            <div className="p-6 bg-zinc-950/40 border border-dashed border-white/10 rounded-2xl text-center space-y-2">
+              <Shield className="w-8 h-8 text-zinc-500 mx-auto" />
+              <div className="text-xs font-bold text-zinc-300">Diagnostic Access is Turned OFF</div>
+              <p className="text-[11px] text-zinc-500 max-w-sm mx-auto">
+                Background diagnostic probes and hardware checks are paused. Flip the switch above to Turn ON access and run diagnostics.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {subsystems.map((sub, idx) => (
+                <div
+                  key={idx}
+                  className="p-4 bg-white/50 dark:bg-zinc-950/70 border border-black/5 dark:border-white/10 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 hover:border-[#00F5A0]/30 transition"
+                >
+                  <div className="flex items-start gap-3 flex-1">
+                    <div className="mt-0.5">{statusIcons[sub.status]}</div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-zinc-200">
+                        {subsystemIcons[sub.name] || <Clock className="w-4 h-4 text-zinc-400" />}
+                        <span>{sub.name}</span>
+                      </div>
+                      <div className="text-xs text-slate-700 dark:text-zinc-300 font-medium">{sub.message}</div>
+                      {sub.details && <div className="text-[11px] text-slate-500 dark:text-zinc-400">{sub.details}</div>}
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-700 dark:text-zinc-300 font-medium">{sub.message}</div>
-                  {sub.details && <div className="text-[11px] text-slate-500 dark:text-zinc-400">{sub.details}</div>}
+
+                  {sub.actionLabel && (
+                    <button
+                      type="button"
+                      onClick={() => handleAction(sub.actionId)}
+                      className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-zinc-800 hover:bg-[#00F5A0] hover:text-zinc-950 text-slate-800 dark:text-zinc-200 text-xs font-bold transition shrink-0 border border-black/5 dark:border-zinc-700"
+                    >
+                      {sub.actionLabel}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Complete Reset from New Option (Erase Memory & Files) */}
+          <div className="p-4 bg-violet-500/10 dark:bg-violet-950/25 border-2 border-violet-500/40 rounded-2xl space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-violet-500/20 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0 border border-violet-500/30">
+                <RotateCcw className="w-4 h-4 text-violet-500" />
+              </div>
+              <div className="flex-1">
+                <div className="text-xs font-bold text-violet-800 dark:text-violet-300 uppercase tracking-wider flex items-center gap-2">
+                  <span>Complete Reset from New</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-500/20 text-violet-700 dark:text-violet-300 border border-violet-500/40">
+                    Violet Erase
+                  </span>
+                </div>
+                <p className="text-[11px] text-violet-700/80 dark:text-violet-300/70 mt-1 leading-relaxed">
+                  Complete erase of all memory, all files, audio recordings, documents, chat histories, databases, and caches back to original phase.
+                </p>
+              </div>
+            </div>
+
+            {!showResetConfirm ? (
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(true)}
+                className="w-full py-2.5 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-violet-900/30 transition cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Complete Reset from New (Erase Memory & Files)</span>
+              </button>
+            ) : (
+              <div className="p-3 bg-violet-600/10 dark:bg-violet-950/60 border border-violet-500/50 rounded-xl space-y-2.5">
+                <div className="text-[11px] font-bold text-violet-700 dark:text-violet-300 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-violet-500 shrink-0" />
+                  <span>Are you sure? This erases all memory, files, databases, and resets to day-one phase.</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={isResetting}
+                    onClick={() => setShowResetConfirm(false)}
+                    className="py-2 px-3 rounded-lg bg-slate-200 dark:bg-zinc-800 hover:bg-slate-300 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 text-xs font-semibold transition cursor-pointer text-center"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isResetting}
+                    onClick={handleExecuteReset}
+                    className="py-2 px-3 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>{isResetting ? 'Erasing Everything...' : 'Confirm Erase All'}</span>
+                  </button>
                 </div>
               </div>
-
-              {sub.actionLabel && (
-                <button
-                  type="button"
-                  onClick={() => handleAction(sub.actionId)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-zinc-800 hover:bg-[#00F5A0] hover:text-zinc-950 text-slate-800 dark:text-zinc-200 text-xs font-bold transition shrink-0 border border-black/5 dark:border-zinc-700"
-                >
-                  {sub.actionLabel}
-                </button>
-              )}
-            </div>
-          ))}
+            )}
+          </div>
         </div>
 
         {/* Footer */}
@@ -372,9 +554,13 @@ export const SystemHealthModal: React.FC<SystemHealthModalProps> = ({ isOpen, on
           </div>
           <button
             type="button"
-            disabled={isScanning}
+            disabled={isScanning || !healthAccess}
             onClick={runFullDiagnostics}
-            className="py-2.5 px-4 rounded-xl bg-[#00F5A0] hover:bg-[#00d68c] text-zinc-950 font-bold text-xs transition flex items-center gap-1.5 shadow-md shadow-[#00F5A0]/20"
+            className={`py-2.5 px-4 rounded-xl font-bold text-xs transition flex items-center gap-1.5 shadow-md ${
+              healthAccess
+                ? 'bg-[#00F5A0] hover:bg-[#00d68c] text-zinc-950 shadow-[#00F5A0]/20 cursor-pointer'
+                : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+            }`}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin' : ''}`} />
             <span>{isScanning ? 'Probing...' : 'Re-run Diagnostics'}</span>
