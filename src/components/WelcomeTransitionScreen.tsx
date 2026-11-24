@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
-import { Gem, ShieldCheck, Lock, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Gem, ShieldCheck, Lock, Sparkles } from 'lucide-react';
 
 interface WelcomeTransitionScreenProps {
   userName: string;
@@ -15,9 +15,11 @@ export const WelcomeTransitionScreen: React.FC<WelcomeTransitionScreenProps> = (
   userName,
   onComplete,
 }) => {
-  const TOTAL_DURATION_MS = 4000;
+  const TOTAL_DURATION_MS = 3500;
   const INTERVAL_MS = 50;
   const [elapsedMs, setElapsedMs] = useState(0);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
     const startTime = Date.now();
@@ -26,17 +28,17 @@ export const WelcomeTransitionScreen: React.FC<WelcomeTransitionScreenProps> = (
       if (elapsed >= TOTAL_DURATION_MS) {
         clearInterval(timer);
         setElapsedMs(TOTAL_DURATION_MS);
-        onComplete();
+        onCompleteRef.current();
       } else {
         setElapsedMs(elapsed);
       }
     }, INTERVAL_MS);
 
     return () => clearInterval(timer);
-  }, [onComplete]);
+  }, []);
 
   const progressPercent = Math.min(100, Math.round((elapsedMs / TOTAL_DURATION_MS) * 100));
-  const remainingSeconds = Math.max(0, ((TOTAL_DURATION_MS - elapsedMs) / 1000)).toFixed(1);
+  const remainingSeconds = Math.max(0, (TOTAL_DURATION_MS - elapsedMs) / 1000).toFixed(1);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#03060B] text-[#E2E8F0] select-none overflow-hidden">
@@ -47,10 +49,10 @@ export const WelcomeTransitionScreen: React.FC<WelcomeTransitionScreenProps> = (
 
       {/* Main Welcome Card */}
       <div className="relative w-full max-w-lg bg-[#070D18]/90 backdrop-blur-2xl border-2 border-[#2563EB]/40 rounded-3xl p-8 sm:p-10 shadow-[0_0_50px_rgba(37,99,235,0.25)] text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
-        {/* Top Security Gate Badge */}
+        {/* Top Session Badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#2563EB]/20 border border-[#2563EB]/40 text-[#60A5FA] text-[11px] font-bold tracking-widest uppercase">
           <ShieldCheck className="w-3.5 h-3.5 text-[#CCFF00]" />
-          <span>Strict Identity Verification Passed</span>
+          <span>Personal Vault Ready</span>
         </div>
 
         {/* Brand Gem Emblem with Acid Lime & Cobalt Halo */}
@@ -66,14 +68,14 @@ export const WelcomeTransitionScreen: React.FC<WelcomeTransitionScreenProps> = (
           </div>
         </div>
 
-        {/* The Exact User Requested Welcome Text */}
+        {/* Welcome Text with Respected Name */}
         <div className="space-y-2">
           <div className="text-xs uppercase tracking-widest text-[#93C5FD] font-semibold flex items-center justify-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-[#CCFF00]" />
-            <span>Authenticated Session</span>
+            <span>Active Vault Session</span>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white">
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white break-words">
             Welcome <span className="text-[#CCFF00] drop-shadow-[0_0_20px_rgba(204,255,0,0.5)]">"{userName}"</span>
           </h1>
 
@@ -82,12 +84,12 @@ export const WelcomeTransitionScreen: React.FC<WelcomeTransitionScreenProps> = (
           </p>
         </div>
 
-        {/* 4-Second Animated Progress Bar and Countdown */}
+        {/* Animated Progress Bar and Countdown */}
         <div className="space-y-2 pt-2">
           <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
             <span className="flex items-center gap-1.5 text-[#60A5FA] font-bold">
               <Lock className="w-3 h-3 text-[#CCFF00]" />
-              Decrypting Local Storage...
+              Preparing Your Workspace...
             </span>
             <span className="text-[#CCFF00] font-bold">{remainingSeconds}s</span>
           </div>
@@ -102,7 +104,7 @@ export const WelcomeTransitionScreen: React.FC<WelcomeTransitionScreenProps> = (
 
           <div className="flex items-center justify-center gap-2 text-[10px] text-slate-400 pt-1">
             <span className="w-2 h-2 rounded-full bg-[#CCFF00] pulse-dot" />
-            <span>Redirecting to Home Dashboard automatically in 4s</span>
+            <span>Entering Home Dashboard in {remainingSeconds}s</span>
           </div>
         </div>
       </div>

@@ -24,8 +24,10 @@ import {
   Power,
   Lock,
   RotateCcw,
+  Monitor,
+  Smartphone,
 } from 'lucide-react';
-import { SystemConfig } from '../types';
+import { SystemConfig, DisplayMode } from '../types';
 import { playChime, speakVoiceAnnouncement, isSpeechSynthesisSupported } from '../services/audioChime';
 import { runAutoCleanupSweep, getAllReminders, getAllVoiceNotes, getAllVaultItems, getAllChatMessages, getUserDatabaseName, completeResetEraseAll } from '../services/db';
 
@@ -68,6 +70,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
     return config.healthAccessEnabled !== false;
   });
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('zircon_display_mode') as DisplayMode | null;
+      if (stored === 'auto' || stored === 'mobile' || stored === 'desktop') return stored;
+    }
+    return config.displayMode || 'auto';
+  });
   const [cleanupStatus, setCleanupStatus] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -83,8 +92,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setChimeType(config.notificationChime || 'bell');
       setTheme(config.theme || 'dark');
       setVoiceAnnouncementEnabled(config.voiceAnnouncementEnabled || false);
-      const stored = typeof window !== 'undefined' ? localStorage.getItem('zircon_health_access') : null;
-      setHealthAccessEnabled(stored !== null ? stored === 'true' : config.healthAccessEnabled !== false);
+      const storedHealth = typeof window !== 'undefined' ? localStorage.getItem('zircon_health_access') : null;
+      setHealthAccessEnabled(storedHealth !== null ? storedHealth === 'true' : config.healthAccessEnabled !== false);
+      const storedDisplay = typeof window !== 'undefined' ? (localStorage.getItem('zircon_display_mode') as DisplayMode | null) : null;
+      setDisplayMode(storedDisplay || config.displayMode || 'auto');
       setCleanupStatus(null);
       setSaveSuccess(false);
       setShowResetConfirm(false);
@@ -106,6 +117,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSave = async () => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('zircon_health_access', String(healthAccessEnabled));
+      localStorage.setItem('zircon_display_mode', displayMode);
     }
     await onSaveConfig({
       retentionDays,
@@ -114,6 +126,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       theme,
       voiceAnnouncementEnabled,
       healthAccessEnabled,
+      displayMode,
     });
     setSaveSuccess(true);
     setTimeout(() => {
@@ -309,6 +322,62 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               >
                 <Laptop className="w-4 h-4" />
                 <span>Auto System</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Display Mode Switcher (Auto Responsive / Desktop Workstation / Mobile Phone) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-zinc-400 flex items-center gap-1.5">
+                <Monitor className="w-3.5 h-3.5 text-[#00F5A0]" />
+                Display Version & Layout
+              </label>
+              <span className="text-[10px] font-mono font-bold text-emerald-700 dark:text-[#00F5A0] bg-[#00F5A0]/15 px-2 py-0.5 rounded-lg border border-[#00F5A0]/30 uppercase">
+                {displayMode === 'auto' ? 'Auto' : displayMode === 'desktop' ? 'Desktop' : 'Mobile'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+              Choose the layout mode. Mobile view fits smartphone dimensions with thumb navigation; Desktop view expands into a dual-column productivity workstation.
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setDisplayMode('auto')}
+                className={`py-2.5 px-2 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  displayMode === 'auto'
+                    ? 'bg-[#00F5A0]/20 border-[#00F5A0] text-emerald-800 dark:text-[#00F5A0] shadow-sm'
+                    : 'bg-white/50 dark:bg-zinc-950/60 border-black/5 dark:border-white/10 text-slate-600 dark:text-zinc-400 hover:border-black/20 dark:hover:border-white/20'
+                }`}
+              >
+                <Laptop className="w-4 h-4 shrink-0" />
+                <span className="truncate">Auto</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDisplayMode('desktop')}
+                className={`py-2.5 px-2 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  displayMode === 'desktop'
+                    ? 'bg-[#2563EB]/25 border-[#2563EB] text-[#60A5FA] shadow-sm'
+                    : 'bg-white/50 dark:bg-zinc-950/60 border-black/5 dark:border-white/10 text-slate-600 dark:text-zinc-400 hover:border-black/20 dark:hover:border-white/20'
+                }`}
+              >
+                <Monitor className="w-4 h-4 shrink-0" />
+                <span className="truncate">Desktop</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDisplayMode('mobile')}
+                className={`py-2.5 px-2 rounded-2xl border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  displayMode === 'mobile'
+                    ? 'bg-[#CCFF00]/20 border-[#CCFF00] text-[#CCFF00] shadow-sm'
+                    : 'bg-white/50 dark:bg-zinc-950/60 border-black/5 dark:border-white/10 text-slate-600 dark:text-zinc-400 hover:border-black/20 dark:hover:border-white/20'
+                }`}
+              >
+                <Smartphone className="w-4 h-4 shrink-0" />
+                <span className="truncate">Mobile</span>
               </button>
             </div>
           </div>

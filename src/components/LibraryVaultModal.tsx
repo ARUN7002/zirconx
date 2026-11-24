@@ -43,6 +43,31 @@ export const LibraryVaultModal: React.FC<LibraryVaultModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedPreviewItem, setSelectedPreviewItem] = useState<VaultItem | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (selectedPreviewItem?.dataUrl) {
+      if (selectedPreviewItem.dataUrl.startsWith('data:')) {
+        fetch(selectedPreviewItem.dataUrl)
+          .then((res) => res.blob())
+          .then((blob) => {
+            const url = URL.createObjectURL(blob);
+            setPreviewBlobUrl(url);
+          })
+          .catch(() => setPreviewBlobUrl(selectedPreviewItem.dataUrl || null));
+      } else {
+        setPreviewBlobUrl(selectedPreviewItem.dataUrl);
+      }
+    } else {
+      setPreviewBlobUrl(null);
+    }
+
+    return () => {
+      if (previewBlobUrl && previewBlobUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewBlobUrl);
+      }
+    };
+  }, [selectedPreviewItem]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -364,9 +389,9 @@ export const LibraryVaultModal: React.FC<LibraryVaultModalProps> = ({
               </button>
             </div>
             <div className="flex-1 bg-white/50 dark:bg-zinc-950 border border-t-0 border-black/10 dark:border-white/10 rounded-b-2xl overflow-hidden relative">
-              {selectedPreviewItem.dataUrl ? (
+              {previewBlobUrl || selectedPreviewItem.dataUrl ? (
                 <iframe
-                  src={selectedPreviewItem.dataUrl}
+                  src={previewBlobUrl || selectedPreviewItem.dataUrl}
                   title={selectedPreviewItem.fileName}
                   className="w-full h-full border-0"
                 />

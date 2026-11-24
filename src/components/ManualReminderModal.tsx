@@ -322,7 +322,9 @@ export const ManualReminderModal: React.FC<ManualReminderModalProps> = ({
       return;
     }
 
-    if (targetTime <= Date.now()) {
+    // Only enforce future requirement if new reminder OR user changed the timestamp
+    const isTimestampUnchanged = isEditing && reminderToEdit && Math.abs(targetTime - reminderToEdit.dueTimestamp) < 60000;
+    if (targetTime <= Date.now() && !isTimestampUnchanged) {
       setErrorMsg('Scheduled time must be in the future. Please pick an upcoming date or time.');
       return;
     }
@@ -342,7 +344,7 @@ export const ManualReminderModal: React.FC<ManualReminderModalProps> = ({
             notes: notes.trim() || undefined,
             dueTimestamp: targetTime,
             priority,
-            status: 'active', // Reactivate when rescheduled
+            status: targetTime > Date.now() ? 'active' : reminderToEdit.status,
             soundEnabled,
           }
         : {

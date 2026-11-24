@@ -3,30 +3,34 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Reminder, VoiceNote, VaultItem, SystemConfig, ChatMessage, AUTHORIZED_USERS, AuthorizedUserName } from '../types';
+import { Reminder, VoiceNote, VaultItem, SystemConfig, ChatMessage, UserName } from '../types';
 
-export { AUTHORIZED_USERS };
-export type { AuthorizedUserName };
+export type { UserName };
+export type AuthorizedUserName = UserName;
 
-export function normalizeAuthorizedUser(input: string): AuthorizedUserName | null {
+const LEGACY_CANONICAL_USERS = ['Ajitha', 'Daresh', 'Arun', 'Ananya', 'Kiruba'] as const;
+
+export function normalizeUserName(input: string): string | null {
   if (!input) return null;
-  const trimmed = input.trim().toLowerCase();
-  const match = AUTHORIZED_USERS.find((u) => u.toLowerCase() === trimmed);
-  return match || null;
+  const cleaned = input.trim().replace(/\s+/g, ' ');
+  if (cleaned.length === 0 || cleaned.length > 60) return null;
+  return cleaned;
 }
+
+export const normalizeAuthorizedUser = normalizeUserName;
 
 const DB_VERSION = 2;
 
-let currentActiveUser: AuthorizedUserName | null = null;
+let currentActiveUser: string | null = null;
 let currentDbName = '';
 let dbInstance: IDBDatabase | null = null;
 
-export function getActiveUser(): AuthorizedUserName | null {
+export function getActiveUser(): string | null {
   if (currentActiveUser) return currentActiveUser;
   if (typeof window === 'undefined') return null;
   const saved = localStorage.getItem('zircon_active_user');
   if (saved) {
-    const valid = normalizeAuthorizedUser(saved);
+    const valid = normalizeUserName(saved);
     if (valid) {
       currentActiveUser = valid;
       return valid;
@@ -35,7 +39,21 @@ export function getActiveUser(): AuthorizedUserName | null {
   return null;
 }
 
-export function setActiveUser(user: AuthorizedUserName | null): void {
+function registerKnownDatabase(dbName: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem('zircon_known_dbs');
+    const parsed: string[] = raw ? JSON.parse(raw) : [];
+    if (!parsed.includes(dbName)) {
+      parsed.push(dbName);
+      localStorage.setItem('zircon_known_dbs', JSON.stringify(parsed));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function setActiveUser(user: string | null): void {
   if (dbInstance) {
     try {
       dbInstance.close();
@@ -44,11 +62,13 @@ export function setActiveUser(user: AuthorizedUserName | null): void {
     }
     dbInstance = null;
   }
-  currentActiveUser = user;
+  const normalized = user ? normalizeUserName(user) : null;
+  currentActiveUser = normalized;
   currentDbName = '';
   if (typeof window !== 'undefined') {
-    if (user) {
-      localStorage.setItem('zircon_active_user', user);
+    if (normalized) {
+      localStorage.setItem('zircon_active_user', normalized);
+      registerKnownDatabase(getUserDatabaseName(normalized));
     } else {
       localStorage.removeItem('zircon_active_user');
     }
@@ -57,7 +77,14 @@ export function setActiveUser(user: AuthorizedUserName | null): void {
 
 export function getUserDatabaseName(userName: string | null): string {
   if (userName) {
-    return `ZirconVault_${userName}`;
+    const trimmed = userName.trim();
+    const legacyMatch = LEGACY_CANONICAL_USERS.find(
+      (u) => u.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (legacyMatch) {
+      return `ZirconVault_${legacyMatch}`;
+    }
+    return `ZirconVault_${encodeURIComponent(trimmed.toLowerCase())}`;
   }
   return 'ZirconVault_Guest';
 }
@@ -486,15 +513,24 @@ async function migrateFromLegacyDBIfPresent(): Promise<boolean> {
 
 // Initialize seed data if database is fresh for active user
 export async function seedInitialDataIfEmpty(forUser?: string): Promise<void> {
-  const user = forUser || getActiveUser() || 'Arun';
+  const user = forUser || getActiveUser() || 'User';
+  const config = await getSystemConfig();
+  if (config.isSeeded) return;
+
   const reminders = await getAllReminders();
-  if (reminders.length > 0) return;
+  if (reminders.length > 0) {
+    await saveSystemConfig({ isSeeded: true });
+    return;
+  }
 
   // If user is Arun and legacy ChronicleVaultDB exists with data, migrate it!
-  if (user === 'Arun') {
+  if (user.toLowerCase() === 'arun') {
     try {
       const hasLegacy = await migrateFromLegacyDBIfPresent();
-      if (hasLegacy) return;
+      if (hasLegacy) {
+        await saveSystemConfig({ isSeeded: true });
+        return;
+      }
     } catch {
       // Continue to fresh seed
     }
@@ -568,6 +604,8 @@ export async function seedInitialDataIfEmpty(forUser?: string): Promise<void> {
       actionType: 'general',
     });
   }
+
+  await saveSystemConfig({ isSeeded: true });
 }
 
 // Chat History CRUD
@@ -628,10 +666,21 @@ export async function completeResetEraseAll(): Promise<void> {
   currentActiveUser = null;
 
   // 2. Query all indexedDB databases if supported by browser
+  let knownDbs: string[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('zircon_known_dbs');
+      if (raw) knownDbs = JSON.parse(raw);
+    } catch {
+      // ignore
+    }
+  }
+
   const allDbNames = new Set<string>([
     'ChronicleVaultDB',
     'ZirconVault_Guest',
-    ...AUTHORIZED_USERS.map((u) => `ZirconVault_${u}`),
+    ...LEGACY_CANONICAL_USERS.map((u) => `ZirconVault_${u}`),
+    ...knownDbs,
   ]);
 
   if (typeof indexedDB !== 'undefined' && typeof indexedDB.databases === 'function') {
@@ -675,10 +724,11 @@ export async function completeResetEraseAll(): Promise<void> {
       localStorage.clear();
     } catch {
       localStorage.removeItem('zircon_active_user');
+      localStorage.removeItem('zircon_known_dbs');
       localStorage.removeItem('zircon_theme');
       localStorage.removeItem('zircon_llm_model');
       localStorage.removeItem('zircon_health_access');
-      for (const u of AUTHORIZED_USERS) {
+      for (const u of LEGACY_CANONICAL_USERS) {
         localStorage.removeItem(`zircon_theme_${u}`);
         localStorage.removeItem(`zircon_llm_model_${u}`);
       }

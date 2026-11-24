@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export const AUTHORIZED_USERS = ['Ajitha', 'Daresh', 'Arun', 'Ananya', 'Kiruba'] as const;
-export type AuthorizedUserName = (typeof AUTHORIZED_USERS)[number];
+export type UserName = string;
+export type AuthorizedUserName = UserName;
 
 export type PriorityLevel = 'low' | 'normal' | 'high' | 'urgent';
 
@@ -49,6 +49,8 @@ export interface VaultItem {
   dataUrl?: string; // base64 / blob URL for local viewing
 }
 
+export type DisplayMode = 'auto' | 'mobile' | 'desktop';
+
 export interface SystemConfig {
   retentionDays: number; // default: 20
   voiceLanguage: string; // default: 'en-US'
@@ -58,6 +60,8 @@ export interface SystemConfig {
   theme: 'dark' | 'light' | 'system';
   voiceAnnouncementEnabled?: boolean; // Text-to-speech spoken reminder announcement
   healthAccessEnabled?: boolean; // Health monitoring and diagnostic access switch
+  isSeeded?: boolean; // Prevents re-seeding when user clears all reminders
+  displayMode?: DisplayMode; // 'auto' | 'mobile' | 'desktop'
 }
 
 export interface SubsystemHealth {

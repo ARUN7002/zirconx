@@ -4,12 +4,11 @@
  */
 
 import React, { useState } from 'react';
-import { Shield, ShieldAlert, ShieldCheck, Gem, User, ArrowRight, Lock, KeyRound, CheckCircle2, AlertTriangle, Fingerprint } from 'lucide-react';
-import { AUTHORIZED_USERS, AuthorizedUserName } from '../types';
-import { normalizeAuthorizedUser } from '../services/db';
+import { ShieldAlert, ShieldCheck, Gem, User, ArrowRight, Lock, Sparkles } from 'lucide-react';
+import { normalizeUserName } from '../services/db';
 
 interface LoginScreenProps {
-  onLoginSuccess: (userName: AuthorizedUserName) => void;
+  onLoginSuccess: (userName: string) => void;
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
@@ -21,22 +20,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     e.preventDefault();
     setErrorMsg(null);
 
-    const trimmed = inputName.trim();
-    if (!trimmed) {
-      setErrorMsg('Please enter your authorized name.');
-      return;
-    }
-
-    const validatedUser = normalizeAuthorizedUser(trimmed);
+    const validatedUser = normalizeUserName(inputName);
     if (!validatedUser) {
-      setErrorMsg('Access Denied: Unrecognized name. Terminal access is restricted to authorized personnel only.');
+      setErrorMsg('Please enter your name (1 to 60 characters) to open your vault.');
       return;
     }
 
     setIsVerifying(true);
     setTimeout(() => {
       onLoginSuccess(validatedUser);
-    }, 350);
+    }, 300);
   };
 
   return (
@@ -59,14 +52,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#2563EB]/20 border border-[#2563EB]/40 text-[#93C5FD] text-[10px] font-bold uppercase tracking-widest mb-1.5">
-              <Fingerprint className="w-3.5 h-3.5 text-[#CCFF00]" />
-              Strict Identity Access Gate
+              <Sparkles className="w-3.5 h-3.5 text-[#CCFF00]" />
+              Personal Isolated Vault
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white">
-              Zircon Terminal Login
+              Zircon Account Sign In
             </h1>
             <p className="text-xs text-slate-300 mt-1 max-w-xs mx-auto leading-relaxed">
-              Enter your authorized name to access your private, isolated vault. No data is shared between user accounts.
+              Open to everyone. Enter your name to unlock or create your private, isolated offline vault.
             </p>
           </div>
         </div>
@@ -84,14 +77,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-wider text-[#CCFF00] flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-[#3B82F6]" />
-              NAME <span className="text-rose-400">*</span>
+              YOUR NAME <span className="text-rose-400">*</span>
             </label>
             <div className="relative">
               <input
                 type="text"
                 required
                 autoFocus
-                placeholder="Enter authorized name..."
+                maxLength={60}
+                placeholder="Enter your name..."
                 value={inputName}
                 onChange={(e) => {
                   setInputName(e.target.value);
@@ -112,10 +106,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
             className="w-full py-3.5 px-4 rounded-2xl bg-[#CCFF00] hover:bg-[#b8e600] active:scale-[0.99] text-[#03060B] font-black text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#CCFF00]/25 hover:shadow-[#CCFF00]/40 hover:scale-[1.01] cursor-pointer disabled:opacity-50"
           >
             {isVerifying ? (
-              <span>Verifying Identity...</span>
+              <span>Opening Private Vault...</span>
             ) : (
               <>
-                <span>Open Private Vault</span>
+                <span>Continue to Vault</span>
                 <ArrowRight className="w-4 h-4 stroke-[2.5]" />
               </>
             )}
@@ -126,10 +120,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         <div className="p-3 bg-[#03060B]/90 border border-[#2563EB]/25 rounded-2xl space-y-1.5 text-[11px] text-slate-300">
           <div className="flex items-center gap-1.5 text-white font-bold">
             <ShieldCheck className="w-3.5 h-3.5 text-[#CCFF00]" />
-            <span>Strict User Isolation Guarantee</span>
+            <span>Private Account Isolation</span>
           </div>
           <p className="leading-relaxed text-[10.5px] text-slate-400">
-            Reminders, voice notes, PDFs, and notification timers are stored in dedicated per-user databases. Data from <strong>Person A</strong> will never bleed or move to <strong>Person B</strong>.
+            Every name gets its own dedicated on-device database. Reminders, voice notes, PDFs, and notification settings never mix between accounts.
           </p>
         </div>
       </div>
